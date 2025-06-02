@@ -73,30 +73,42 @@ spec:
               mountPath: {{ .tomcat.home }}/logs
               readOnly: false
             # Mount Tomcat configuration files
-            - name: {{ .tomcat.conf.context }}
+            {{- if .tomcat.properties.mountContext }}
+            - name: kramerius-{{ .name }}-tomcat-config
               mountPath: {{ .tomcat.home }}/conf/context.xml
               subPath: context.xml
-            - name: {{ .tomcat.conf.server }}
+            {{- end }}
+            {{- if .tomcat.properties.mountServer }}
+            - name: kramerius-{{ .name }}-tomcat-config
               mountPath: {{ .tomcat.home }}/conf/server.xml
               subPath: server.xml
-            - name: {{ .tomcat.conf.logging }}
+            {{- end }}
+            {{- if .tomcat.properties.mountLogging }}
+            - name: kramerius-{{ .name }}-tomcat-config
               mountPath: {{ .tomcat.home }}/conf/logging.properties
               subPath: logging.properties
+            {{- end }}
 
             # Mount Kramerius home directory
             - name: kramerius-{{ .name }}-home
               mountPath: {{ .kramerius.home }}
               readOnly: false
             # Mount Kramerius configuration files
+            {{- if .kramerius.properties.mountConfiguration }}
             - name: kramerius-{{ .name }}-config
               mountPath: {{ .kramerius.home }}/configuration.properties
               subPath: configuration.properties
+            {{- end }}
+            {{- if .kramerius.properties.mountKeycloak }}
             - name: kramerius-{{ .name }}-config
               mountPath: {{ .kramerius.home }}/keycloak.json
               subPath: keycloak.json
+            {{- end }}
+            {{- if .kramerius.properties.mountLpXml }}
             - name: kramerius-{{ .name }}-config
               mountPath: {{ .kramerius.home }}/lp.xml
               subPath: lp.xml
+            {{- end }}
 
 {{- with .extraVolumeMounts }}
 {{- toYaml . | nindent 12 }}
@@ -113,6 +125,18 @@ spec:
       volumes:
         - name: kramerius-{{ .name }}-home
           emptyDir:
+
+        {{- if .kramerius.properties.configMapName }}
+        - name: kramerius-{{ .name }}-config
+          configMap:
+            name: {{ .kramerius.properties.configMapName }}
+        {{- end }}
+        {{- if .tomcat.properties.configMapName }}
+        - name: kramerius-{{ .name }}-tomcat-config
+          configMap:
+            name: {{ .tomcat.properties.configMapName }}
+        {{- end }}
+
 {{- with .volumes }}
 {{ toYaml . | indent 8 }}
 {{- end }}

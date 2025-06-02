@@ -109,7 +109,7 @@ admin:
         cpu: "250m"
         memory: "128Mi"
     globalsJs:
-      fileRef:
+      configMapName: kramerius-admin-globals-config
       fullPath: /usr/share/nginx/html/assets/shared/globals.js
       subPath: globals.js
 
@@ -174,9 +174,10 @@ defaultInstanceConfig: &defaultInstanceConfig
         mountPath:
 
     properties:
-      configuration:  # file reference
-      keycloak:       # file reference
-      lpXml:          # file reference
+      configMapName:
+      mountConfiguration: false
+      mountKeycloak: false
+      mountLpXml: false
 
     processLogs: process-logs
 
@@ -187,10 +188,11 @@ defaultInstanceConfig: &defaultInstanceConfig
 
     logs: tomcat-logs
 
-    conf:
-      context:        # file reference
-      server:         # file reference
-      logging:        # file reference
+    properties:
+      configMapName:
+      mountContext: false
+      mountServer: false
+      mountLogging: false
   
   jmxRemote:
     enabled: true

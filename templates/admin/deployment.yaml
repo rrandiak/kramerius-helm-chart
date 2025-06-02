@@ -46,7 +46,7 @@ spec:
       volumes:
         - name: globals-js
           configMap:
-            name: kramerius-admin-globals-config
+            name: {{ .Values.admin.container.globalsJs.configMapName }}
 
       {{- if .Values.admin.image.pullSecrets }}
       imagePullSecrets:
