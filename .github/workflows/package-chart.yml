@@ -1,5 +1,8 @@
 name: Package and Publish Helm Chart
 
+permissions:
+  contents: write
+
 on:
   push:
     branches: [main]
