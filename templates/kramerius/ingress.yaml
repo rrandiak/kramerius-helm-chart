@@ -1,0 +1,43 @@
+{{- $hasHost := false }}
+{{- range .Values.instances }}
+  {{- if and .host (ne .host.name "") }}
+    {{- $hasHost = true }}
+  {{- end }}
+{{- end }}
+
+{{- if $hasHost }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: kramerius
+  annotations:
+{{ .Values.ingress.annotations | toYaml | indent 4 }}
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+    {{- range .Values.instances }}
+    {{- if and .host (ne .host.name "") }}
+      - {{ .host.name }}
+    {{- end }}
+    {{- end }}
+      secretName: kramerius-tls
+  rules:
+  {{- range .Values.instances }}
+  {{- if and .host (ne .host.name "") }}
+    - host: {{ .host.name }}
+      http:
+        paths:
+        {{- $instance := . }} 
+        {{- range .host.paths }}
+          - path: {{ .path | default "/" }}
+            pathType: {{ .pathType | default "Prefix" }}
+            backend:
+              service:
+                name: kramerius-{{ $instance.name }}
+                port:
+                  name: http
+        {{- end }}
+  {{- end }}
+  {{- end }}
+{{- end }}

@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: kramerius-hazelcast
+  labels:
+{{ include "kramerius-hazelcast.labels" . | indent 4 }}
+spec:
+  clusterIP: None
+  selector:
+{{ include "kramerius-hazelcast.labels" . | indent 4 }}
+  ports:
+    - name: http
+      protocol: TCP
+      port: {{ .Values.hazelcast.service.port }}
+      targetPort: {{ .Values.hazelcast.container.port }}

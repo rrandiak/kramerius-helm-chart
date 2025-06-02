@@ -1,0 +1,41 @@
+{{- range .Values.instances }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: kramerius-{{ .name }}
+  labels:
+{{ include "kramerius.labels" .name | indent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+{{ include "kramerius.labels" .name | indent 4 }}
+  ports:
+    - name: http
+      protocol: TCP
+      port: {{ .service.port }}
+      targetPort: {{ .container.port }}
+
+{{- if .jmxPrometheus.enabled }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kramerius-{{ .name }}-jmx
+spec:
+  selector:
+{{ include "kramerius.labels" .name | indent 4 }}
+  ports:
+    - port: 5556
+      name: http-jmx
+      targetPort: 5556
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kramerius-{{ .name }}-jmx-alias
+spec:
+  type: ExternalName
+  externalName: "kramerius-{{ .name }}-jmx.{{ $.Release.Namespace }}.svc.cluster.local"
+{{- end }}
+
+{{- end }}

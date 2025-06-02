@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-initscripts
+data:
+  init-user-db.sh: |
+    #!/bin/sh
+
+    set -e
+
+    psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-EOSQL
+        CREATE USER $MONITOR_USER;        
+        CREATE DATABASE $MONITOR_USER;
+        GRANT ALL PRIVILEGES ON DATABASE $MONITOR_USER TO $MONITOR_USER;
+
+        CREATE ROLE "$PG_APP_USER" LOGIN PASSWORD "$PG_APP_PASSWORD";
+        CREATE DATABASE "$PG_APP_DB" WITH ENCODING='UTF8' OWNER="$PG_APP_USER";
+    EOSQL

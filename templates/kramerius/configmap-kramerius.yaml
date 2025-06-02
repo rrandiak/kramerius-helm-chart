@@ -1,0 +1,22 @@
+{{- range .Values.instances }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kramerius-{{ .name }}-config
+data:
+  {{- if .kramerius.properties.configuration }}
+  configuration.properties: |-
+{{ .Files.Get .kramerius.properties.configuration | indent 4 }}
+  {{- end }}
+
+  {{- if .kramerius.properties.keycloak }}
+  keycloak.json: |-
+{{ .Files.Get .kramerius.properties.keycloak | indent 4 }}
+  {{- end }}
+
+  {{- if .kramerius.properties.lpXml }}
+  lp.xml: |-
+{{ .Files.Get .kramerius.properties.lpXml | indent 4 }}
+  {{- end }}
+---
+{{- end }}

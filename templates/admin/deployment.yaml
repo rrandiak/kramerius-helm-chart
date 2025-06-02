@@ -1,0 +1,58 @@
+{{- if .Values.admin.enabled }}
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kramerius-admin-client
+  labels:
+{{ include "kramerius-admin-client.labels" . | indent 4 }}
+
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+{{ include "kramerius-admin-client.labels" . | indent 6 }}
+
+  strategy:
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+{{ include "kramerius-admin-client.labels" . | indent 8 }}
+
+    spec:
+      containers:
+        - name: kramerius-admin-client
+          image: {{ .Values.admin.image.repository }}:{{ .Values.admin.image.tag }}
+          imagePullPolicy: {{ .Values.admin.image.pullPolicy }}
+          ports:
+            - containerPort: {{ .Values.admin.container.port }}
+              name: k7-admin
+          env:
+            - name: TZ
+              value: {{ .Values.timezone | default "Europe/Prague" }}
+          volumeMounts:
+            - mountPath: {{ .Values.admin.container.globalsJs.fullPath }}
+              subPath: {{ .Values.admin.container.globalsJs.subPath }}
+              name: globals-js
+          resources:
+            requests:
+              cpu: {{ .Values.admin.container.resources.requests.cpu }}
+              memory: {{ .Values.admin.container.resources.requests.memory }}
+            limits:
+              cpu: {{ .Values.admin.container.resources.limits.cpu }}
+              memory: {{ .Values.admin.container.resources.limits.memory }}
+
+      volumes:
+        - name: globals-js
+          configMap:
+            name: kramerius-admin-globals-config
+
+      {{- if .Values.admin.image.pullSecrets }}
+      imagePullSecrets:
+        {{- range .Values.admin.image.pullSecrets }}
+        - name: {{ . }}
+        {{- end }}
+      {{- end }}
+
+{{- end }}

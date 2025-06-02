@@ -1,0 +1,127 @@
+{{- range .Values.instances }}
+
+metadata:
+  name: kramerius-{{ .name }}
+  labels:
+{{ include "kramerius.labels" .name | indent 4 }}
+
+spec:
+  replicas: {{ .replicaCount }}
+  selector:
+    matchLabels:
+{{ include "kramerius.labels" .name | indent 6 }}
+
+  template:
+    metadata:
+      labels:
+{{ include "kramerius.labels" .name | indent 8 }}
+
+    spec:
+      containers:
+        - name: kramerius
+          image: {{ .image.repository }}:{{ .image.tag }}
+          imagePullPolicy: {{ .image.pullPolicy }}
+          securityContext:
+            runAsUser: {{ .container.runAsUser }}
+            runAsGroup: {{ .container.runAsGroup }}
+          ports:
+            - containerPort: {{ .container.port }}
+              name: k7-tomcat
+
+          env:
+            - name: TZ
+              value: {{ $.Values.timezone | default "Europe/Prague" }}
+            {{- if .host.name }}
+            - name: VIRTUAL_HOST
+              value: {{ .host.name }}
+            {{- end }}
+            - name: CATALINA_OPTS
+              value: {{ include "kramerius.catalinaOpts" . | trim | quote }}
+
+          volumeMounts:
+            # Mount Akubra objectStore
+            - name: {{ .kramerius.akubra.objectStore.name }}
+              mountPath: {{ .kramerius.akubra.objectStore.mountPath }}
+              readOnly: {{ .kramerius.readOnly }}
+            # Mount Akubra datastreamStore
+            - name: {{ .kramerius.akubra.datastreamStore.name }}
+              mountPath: {{ .kramerius.akubra.datastreamStore.mountPath }}
+              readOnly: {{ .kramerius.readOnly }}
+
+            {{- if not .kramerius.readOnly}}
+            {{- if and .kramerius.import.foxml.name .kramerius.import.foxml.mountPath }}
+            # Mount FOXML import volume
+            - name: {{ .kramerius.import.foxml.name }}
+              mountPath: {{ .kramerius.import.foxml.path }}
+              readOnly: true
+            {{- end }}
+            {{- if and .kramerius.import.ndk.name .kramerius.import.ndk.mountPath }}
+            # Mount NDK import volume
+            - name: {{ .kramerius.import.ndk.name }}
+              mountPath: {{ .kramerius.import.ndk.mountPath }}
+              readOnly: false
+            {{- end }}
+
+            # Mount process logs volume
+            - name: {{ .kramerius.processLogs }}
+              mountPath: {{ .kramerius.home }}/lp
+              readOnly: false
+            {{- end }}
+
+            # Mount Tomcat logs
+            - name: {{ .tomcat.logs }}
+              mountPath: {{ .tomcat.home }}/logs
+              readOnly: false
+            # Mount Tomcat configuration files
+            - name: {{ .tomcat.conf.context }}
+              mountPath: {{ .tomcat.home }}/conf/context.xml
+              subPath: context.xml
+            - name: {{ .tomcat.conf.server }}
+              mountPath: {{ .tomcat.home }}/conf/server.xml
+              subPath: server.xml
+            - name: {{ .tomcat.conf.logging }}
+              mountPath: {{ .tomcat.home }}/conf/logging.properties
+              subPath: logging.properties
+
+            # Mount Kramerius home directory
+            - name: kramerius-{{ .name }}-home
+              mountPath: {{ .kramerius.home }}
+              readOnly: false
+            # Mount Kramerius configuration files
+            - name: kramerius-{{ .name }}-config
+              mountPath: {{ .kramerius.home }}/configuration.properties
+              subPath: configuration.properties
+            - name: kramerius-{{ .name }}-config
+              mountPath: {{ .kramerius.home }}/keycloak.json
+              subPath: keycloak.json
+            - name: kramerius-{{ .name }}-config
+              mountPath: {{ .kramerius.home }}/lp.xml
+              subPath: lp.xml
+
+{{- with .extraVolumeMounts }}
+{{- toYaml . | nindent 12 }}
+{{- end }}
+
+          resources:
+            requests:
+              cpu: {{ .container.resources.requests.cpu }}
+              memory: {{ .container.resources.requests.memory }}
+            limits:
+              cpu: {{ .container.resources.limits.cpu }}
+              memory: {{ .container.resources.limits.memory }}
+
+      volumes:
+        - name: kramerius-{{ .name }}-home
+          emptyDir:
+{{- with .volumes }}
+{{ toYaml . | indent 8 }}
+{{- end }}
+
+      {{- if .image.pullSecrets }}
+      imagePullSecrets:
+        {{- range .pullSecrets }}
+        - name: {{ . }}
+        {{- end }}
+      {{- end }}
+
+{{- end }}

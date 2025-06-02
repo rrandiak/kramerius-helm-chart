@@ -1,0 +1,48 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: kramerius-hazelcast
+  labels:
+{{ include "kramerius-hazelcast.labels" . | indent 4 }}
+
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+{{ include "kramerius-hazelcast.labels" . | indent 6 }}
+
+  strategy:
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+{{ include "kramerius-hazelcast.labels" . | indent 8 }}
+
+    spec:
+      containers:
+        - name: kramerius-hazelcast
+          image: {{ .Values.hazelcast.image.repository }}:{{ .Values.hazelcast.image.tag }}
+          imagePullPolicy: {{ .Values.hazelcast.image.pullPolicy }}
+          ports:
+            - containerPort: {{ .Values.hazelcast.container.port }}
+              name: k7-hazelcast
+          env:
+            - name: TZ
+              value: {{ .Values.hazelcast.timezone | default "Europe/Prague" }}
+            - name: JAVA_OPTS
+              value: {{ include "hazelcast.javaOpts" .Values.hazelcast | quote }}
+          resources:
+            requests:
+              cpu: {{ .Values.hazelcast.container.resources.requests.cpu }}
+              memory: {{ .Values.hazelcast.container.resources.requests.memory }}
+            limits:
+              cpu: {{ .Values.hazelcast.container.resources.limits.cpu }}
+              memory: {{ .Values.hazelcast.container.resources.limits.memory }}
+
+      serviceName: kramerius-hazelcast
+      {{- if .Values.hazelcast.image.pullSecrets }}
+      imagePullSecrets:
+        {{- range .Values.hazelcast.image.pullSecrets }}
+        - name: {{ . }}
+        {{- end }}
+      {{- end }}

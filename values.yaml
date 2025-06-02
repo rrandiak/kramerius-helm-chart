@@ -1,0 +1,223 @@
+##############
+# PostgreSQL #
+##############
+postgres:
+  image:
+    repository: postgres
+    tag: latest
+    pullPolicy: Always
+    pullSecrets: []
+
+  container:
+    port: 5432
+    resources:
+      requests:
+        cpu: "250m"
+        memory: "512Mi"
+      limits:
+        cpu: "1"
+        memory: "2Gi"
+    
+  service:
+    port: 5432
+
+  auth:
+    postgresPassword: "replace-me"
+    database: kramerius
+    username: krameriusDbUser
+    password: "replace-me"
+
+  postgresArgs:
+    - -c
+    - shared_buffers=256MB
+    - -c
+    - work_mem=64MB
+    - -c
+    - max_connections=64
+    - -c
+    - tcp_keepalives_idle=62
+
+  volumes:
+    - name: postgres-data
+      persistentVolumeClaim:
+        claimName: postgredb
+
+  # PostgreSQL Exporter
+  exporter:
+    enabled: false
+
+    user: monitor
+    password: "replace-me"
+    port: 9187
+
+    image:
+      repository: quay.io/prometheuscommunity/postgres-exporter
+      tag: latest
+      pullPolicy: IfNotPresent
+      pullSecrets: []
+
+    resources:
+      requests:
+        memory: 32Mi
+        cpu: 5m
+      limits:
+        memory: 64Mi
+        cpu: 20m
+
+#########################
+# HazelCast Lock Server #
+#########################
+hazelcast:
+  image:
+    repository: ceskaexpedice/hazelcast-locks-server
+    tag: latest
+    pullPolicy: Always
+    pullSecrets: []
+
+  container:
+    port: 5701
+    resources:
+      requests:
+        cpu: "250m"
+        memory: "512Mi"
+      limits:
+        cpu: "1000m"
+        memory: "2Gi"
+
+  service:
+    port: 5701
+
+##########################
+# Kramerius Admin Client #
+##########################
+admin:
+  enabled: true
+
+  image:
+    repository: ceskaexpedice/kramerius-admin-client
+    tag: latest
+    pullPolicy: Always
+    pullSecrets: []
+
+  container:
+    port: 80
+    resources:
+      requests:
+        cpu: "50m"
+        memory: "64Mi"
+      limits:
+        cpu: "250m"
+        memory: "128Mi"
+    globalsJs:
+      fileRef:
+      fullPath: /usr/share/nginx/html/assets/shared/globals.js
+      subPath: globals.js
+
+  service:
+    port: 80
+  
+  host:
+    name: kramerius-admin.example.cz
+    path: "/"
+
+#######################
+# Kramerius Instances #
+#######################
+defaultInstanceConfig: &defaultInstanceConfig
+  replicaCount: 1
+
+  image:
+    repository: kramerius/kramerius4
+    tag: latest
+    pullPolicy: Always
+    pullSecrets: []
+
+  container:
+    runAsUser: 0
+    runAsGroup: 0
+    port: 8080
+    resources:
+      requests:
+        cpu: "250m"
+        memory: "512Mi"
+      limits:
+        cpu: "1000m"
+        memory: "2Gi"
+
+  service:
+    port: 80
+  
+  host:
+    name: ""
+    paths:
+      - path: 
+        pathType: 
+
+  kramerius:
+    home: "/root/.kramerius4"
+    readOnly: false
+
+    akubra:
+      objectStore:
+        name: akubra-objectstore
+        mountPath: /data/akubra/objectStore
+      datastreamStore:
+        name: akubra-datastream
+        mountPath: /data/akubra/datastreamStore
+
+    import:
+      foxml: 
+        name: import-foxml
+        mountPath:
+      ndk:
+        name: import-ndk
+        mountPath:
+
+    properties:
+      configuration:  # file reference
+      keycloak:       # file reference
+      lpXml:          # file reference
+
+    processLogs: process-logs
+
+  tomcat:
+    home: "/usr/local/tomcat"
+
+    password: "replace-me"
+
+    logs: tomcat-logs
+
+    conf:
+      context:        # file reference
+      server:         # file reference
+      logging:        # file reference
+  
+  jmxRemote:
+    enabled: true
+  
+  jmxPrometheus:
+    enabled: true
+    jarPath: /jmx-exporter/jmx_prometheus_javaagent-1.0.1.jar
+    configPath: /jmx-exporter/kramerius-config.yml
+
+  volumes: []
+
+  extraVolumeMounts: []
+
+# The default instance configuration is defined in 'defaultInstanceConfig' 
+# and can be included in each instance using YAML anchors.
+# Specific properties can then be overridden per instance as needed.
+instances:
+  - name: single-instance
+    <<: *defaultInstanceConfig
+
+ingress:
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt
+    nginx.ingress.kubernetes.io/real-ip-header: X-Forwarded-For
+    nginx.ingress.kubernetes.io/use-regex: "true"
+    nginx.ingress.kubernetes.io/server-snippet:
+  
+persistentVolumeClaims:
+
+timezone: Europe/Prague

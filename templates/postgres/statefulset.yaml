@@ -1,0 +1,115 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  labels:
+{{ include "postgres.labels" . | indent 4 }}
+spec:
+  serviceName: postgres
+  replicas: 1
+  podManagementPolicy: OrderedReady
+  updateStrategy:
+    type: RollingUpdate
+  revisionHistoryLimit: 2
+  selector:
+    matchLabels:
+{{ include "postgres.labels" . | indent 6 }}
+  template:
+    metadata:
+      labels:
+{{ include "postgres.labels" . | indent 8 }}
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9187"
+        reloader.stakater.com/auto: "true"
+    spec:
+      containers:
+        - name: postgres
+          image: postgres
+          imagePullPolicy: Always
+          args:
+            {{- range .Values.postgres.postgresArgs }}
+            - {{ . | quote }}
+            {{- end }}
+          ports:
+            - containerPort: 5432
+              name: postgres
+          volumeMounts:
+            - name: postgres-data
+              mountPath: /var/lib/postgresql/data
+            - name: postgres-initscripts
+              mountPath: /docker-entrypoint-initdb.d/
+              readOnly: true
+          env:
+            - name: POSTGRES_DB
+              value: postgres
+            - name: POSTGRES_USER
+              value: postgres
+            - name: POSTGRES_PASSWORD
+              value: {{ .Values.postgres.auth.postgresPassword | quote }}
+            - name: PG_APP_DB
+              value: {{ .Values.postgres.auth.database | quote }}
+            - name: PG_APP_USER
+              value: {{ .Values.postgres.auth.username | quote }}
+            - name: PG_APP_PASSWORD
+              value: {{ .Values.postgres.auth.password | quote }}
+            - name: TZ
+              value: {{ .Values.postgres.timezone | default "Europe/Prague" }}
+          livenessProbe:
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 2
+            successThreshold: 1
+            failureThreshold: 10
+            tcpSocket:
+              port: 5432
+          startupProbe:
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 2
+            successThreshold: 1
+            failureThreshold: 30
+            tcpSocket:
+              port: 5432
+        {{- if .Values.postgres.exporter.enabled }}
+        - name: exporter
+          image: {{ .Values.postgres.exporter.image.repository }}:{{ .Values.postgres.exporter.image.tag }}
+          imagePullPolicy: {{ .Values.postgres.exporter.image.pullPolicy }}
+          {{- if .Values.postgres.exporter.image.pullSecrets }}
+          imagePullSecrets:
+            {{- toYaml .Values.postgres.exporter.image.pullSecrets | nindent 6 }}
+          {{- end }}
+          resources:
+            requests:
+              memory: {{ .Values.postgres.exporter.resources.requests.memory }}
+              cpu: {{ .Values.postgres.exporter.resources.requests.cpu }}
+            limits:
+              memory: {{ .Values.postgres.exporter.resources.limits.memory }}
+              cpu: {{ .Values.postgres.exporter.resources.limits.cpu }}
+          args:
+            - --web.listen-address=:{{ .Values.postgres.exporter.port }}
+          env:
+            - name: TZ
+              value: {{ .Values.postgres.timezone | default "Europe/Prague" }}
+            - name: DATA_SOURCE_URI
+              value: 127.0.0.1?sslmode=disable
+            - name: DATA_SOURCE_USER
+              value: {{ .Values.postgres.exporter.user | quote }}
+            - name: DATA_SOURCE_PASS
+              value: {{ .Values.postgres.exporter.password | quote }}
+          ports:
+            - containerPort: {{ .Values.postgres.exporter.port }}
+              name: metrics
+          livenessProbe:
+            httpGet:
+              port: {{ .Values.postgres.exporter.port }}
+              path: /health
+        {{- end }}
+      volumes:
+        - name: postgres-initscripts
+          configMap:
+            name: postgres-initscripts
+            defaultMode: 0755
+{{- with .Values.postgres.volumes }}
+{{ toYaml . | indent 8 }}
+{{- end }}

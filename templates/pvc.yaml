@@ -1,0 +1,11 @@
+{{- if .Values.persistentVolumeClaims }}
+{{- range .Values.persistentVolumeClaims }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+{{ toYaml .metadata | indent 2 }}
+spec:
+{{ toYaml .spec | indent 2 }}
+---
+{{- end }}
+{{- end }}
