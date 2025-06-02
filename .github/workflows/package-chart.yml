@@ -1,0 +1,36 @@
+name: Package and Publish Helm Chart
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repo
+      uses: actions/checkout@v3
+
+    - name: Set up Helm
+      uses: azure/setup-helm@v3
+      with:
+        version: v3.12.0
+
+    - name: Package Helm chart
+      run: |
+        helm package .
+        mkdir -p charts
+        mv *.tgz charts/
+        helm repo index charts --url https://rrandiak.github.io/kramerius-helm-chart/charts
+
+    - name: Commit and push packaged chart and index.yaml
+      run: |
+        git config user.name "GitHub Actions"
+        git config user.email "actions@github.com"
+        git add charts
+        git commit -m "Automated: package Helm chart and update index"
+        git push
+      env:
+        # Use the default GITHUB_TOKEN for pushing back to repo
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
