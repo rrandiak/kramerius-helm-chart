@@ -1,5 +1,7 @@
 {{- range .Values.instances }}
 
+apiVersion: apps/v1
+kind: Deployment
 metadata:
   name: kramerius-{{ .name }}
   labels:
@@ -147,5 +149,7 @@ spec:
         - name: {{ . }}
         {{- end }}
       {{- end }}
+
+---
 
 {{- end }}
