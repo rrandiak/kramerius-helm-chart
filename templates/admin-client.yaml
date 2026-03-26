@@ -1,0 +1,73 @@
+{{- if .Values.adminClient.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: admin-client-globals
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "kramerius.labels" . | nindent 4 }}
+data:
+  globals.js: |
+    {{- .Values.adminClient.config.globalsJs | nindent 4 }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: admin-client
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "kramerius.labels" . | nindent 4 }}
+    app.kubernetes.io/name: admin-client
+    app.kubernetes.io/component: admin-client
+spec:
+  replicas: {{ .Values.adminClient.replicas }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: admin-client
+      app.kubernetes.io/component: admin-client
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: admin-client
+        app.kubernetes.io/component: admin-client
+      annotations:
+        checksum/admin-client-values: {{ include "kramerius.checksum.adminClientPod" . | quote }}
+    spec:
+      {{- include "kramerius.imagePullSecrets" . | nindent 6 }}
+      containers:
+        - name: admin-client
+          image: {{ .Values.adminClient.image.repository }}:{{ .Values.adminClient.image.tag }}
+          imagePullPolicy: {{ .Values.adminClient.image.pullPolicy | default "Always" }}
+          ports:
+            - containerPort: 80
+              name: http
+          volumeMounts:
+            - name: admin-client-globals
+              mountPath: /usr/share/nginx/html/assets/shared/globals.js
+              subPath: globals.js
+              readOnly: true
+          resources:
+            {{- toYaml .Values.adminClient.resources | nindent 12 }}
+      volumes:
+        - name: admin-client-globals
+          configMap:
+            name: admin-client-globals
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: admin-client
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "kramerius.labels" . | nindent 4 }}
+    app.kubernetes.io/name: admin-client
+    app.kubernetes.io/component: admin-client
+spec:
+  selector:
+    app.kubernetes.io/name: admin-client
+    app.kubernetes.io/component: admin-client
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80
+{{- end }}

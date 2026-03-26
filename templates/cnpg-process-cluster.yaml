@@ -1,0 +1,20 @@
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: {{ .Values.cnpg.processManager.cluster.name }}
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "kramerius.labels" . | nindent 4 }}
+spec:
+  instances: {{ .Values.cnpg.processManager.cluster.instances }}
+  storage:
+    size: {{ .Values.cnpg.processManager.storage.size }}
+    {{- if .Values.cnpg.processManager.storage.storageClass }}
+    storageClass: {{ .Values.cnpg.processManager.storage.storageClass }}
+    {{- end }}
+  bootstrap:
+    initdb:
+      database: process
+      owner: process
+      secret:
+        name: {{ .Values.cnpg.processManager.cluster.name }}-secret

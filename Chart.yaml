@@ -1,9 +1,9 @@
 apiVersion: v2
 name: kramerius
-description: Helm chart for orchestrating multi-instance Kramerius
+description: Kramerius 7 - digital library system
 type: application
-version: 0.1.0
-appVersion: "7.1.0-rc1"
+version: 1.0.0
+appVersion: "7.2.0"
 maintainers:
   - name: Randiak Robert
     email: robert.randiak@mzk.cz

@@ -1,0 +1,1012 @@
+{{- if .Values.elk.enabled }}
+{{/* ================================================================
+     ELK stack: Elasticsearch + Kibana + Filebeat
+     Filebeat reads gateway JSON access logs from a shared PVC
+     and ships them to Elasticsearch with GeoIP enrichment.
+     ================================================================ */}}
+
+{{/* ---------- Gateway access-logs shared PVC ---------- */}}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: gateway-access-logs
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "kramerius.labels" . | nindent 4 }}
+    app.kubernetes.io/component: elk
+spec:
+  {{- $glSc := .Values.elk.gatewayLogs.storageClass | default .Values.defaultStorageClass }}
+  {{- if $glSc }}
+  storageClassName: {{ $glSc | quote }}
+  {{- end }}
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: {{ .Values.elk.gatewayLogs.size }}
+---
+{{/* ---------- Elasticsearch PVC ---------- */}}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: elasticsearch-data
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "kramerius.labels" . | nindent 4 }}
+    app.kubernetes.io/component: elasticsearch
+spec:
+  {{- $esSc := .Values.elk.elasticsearch.storage.storageClass | default .Values.defaultStorageClass }}
+  {{- if $esSc }}
+  storageClassName: {{ $esSc | quote }}
+  {{- end }}
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: {{ .Values.elk.elasticsearch.storage.size }}
+---
+{{/* ---------- Filebeat data PVC ---------- */}}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: filebeat-data
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "kramerius.labels" . | nindent 4 }}
+    app.kubernetes.io/component: filebeat
+spec:
+  {{- $fbSc := .Values.elk.filebeat.storage.storageClass | default .Values.defaultStorageClass }}
+  {{- if $fbSc }}
+  storageClassName: {{ $fbSc | quote }}
+  {{- end }}
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: {{ .Values.elk.filebeat.storage.size }}
+---
+{{/* ---------- Elasticsearch env ConfigMap ---------- */}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: elasticsearch-env-config
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "kramerius.labels" . | nindent 4 }}
+    app.kubernetes.io/component: elasticsearch
+data:
+  discovery.type: {{ .Values.elk.elasticsearch.env.discoveryType | quote }}
+  bootstrap.memory_lock: "true"
+  ES_JAVA_OPTS: {{ .Values.elk.elasticsearch.env.javaOpts | quote }}
+  xpack.security.enabled: {{ .Values.elk.elasticsearch.env.xpackSecurityEnabled | quote }}
+---
+{{/* ---------- Kibana env ConfigMap ---------- */}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kibana-env-config
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "kramerius.labels" . | nindent 4 }}
+    app.kubernetes.io/component: kibana
+data:
+  ELASTICSEARCH_HOSTS: "http://elasticsearch.{{ .Values.namespace }}.svc.cluster.local:9200"
+  TIMELION_ENABLED: "true"
+---
+{{/* ---------- Filebeat ConfigMap (filebeat.yml + ES setup assets) ---------- */}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: filebeat-config
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "kramerius.labels" . | nindent 4 }}
+    app.kubernetes.io/component: filebeat
+data:
+  filebeat.yml: |
+    filebeat.inputs:
+      - type: filestream
+        id: k7-gateway
+        enabled: true
+        paths:
+          - /usr/share/filebeat/logs/gateway/*.log
+        parsers:
+          - ndjson:
+              target: "request"
+              add_error_key: true
+
+    logging.level: info
+    logging.to_stderr: true
+
+    output.elasticsearch:
+      hosts: ["http://elasticsearch.{{ .Values.namespace }}.svc.cluster.local:9200"]
+      max_retries: 5
+      backoff.init: 1s
+      backoff.max: 30s
+      index: "k7-access-logs-%{+yyyy.MM.dd}"
+      pipeline: "k7-access-logs"
+
+    setup.template.name: "k7-client-logs"
+    setup.template.pattern: "k7-client-logs*"
+
+    setup.kibana:
+      host: "http://kibana.{{ .Values.namespace }}.svc.cluster.local:80"
+
+    processors:
+      - drop_event:
+          when:
+            equals:
+              request.remote_addr: "-"
+      - timestamp:
+          field: request.time_local
+          target_field: "@timestamp"
+          layouts:
+            - '02/Jan/2006:15:04:05 -0700'
+          test:
+            - '01/Aug/2025:00:19:55 +0200'
+      - script:
+          lang: javascript
+          id: parse_request
+          source: >
+            function process(event) {
+              var endpoints = [
+                "/search/api/client/v7.0/search",
+
+                "/search/iiif/{pid}/info.json",
+                "/search/iiif/{pid}/{region}/{size}/{rotation}/default.jpg",
+
+                "/search/api/client/v7.0/items/{pid}/info/data",
+                "/search/api/client/v7.0/items/{pid}/info/structure",
+                "/search/api/client/v7.0/items/{pid}/info/providedByLicenses",
+                "/search/api/client/v7.0/items/{pid}/info/image",
+                "/search/api/client/v7.0/items/{pid}/info",
+
+                "/search/api/client/v7.0/items/{pid}/image/preview",
+                "/search/api/client/v7.0/items/{pid}/image/thumb",
+                "/search/api/client/v7.0/items/{pid}/image",
+
+                "/search/api/client/v7.0/items/{pid}/metadata/dc",
+                "/search/api/client/v7.0/items/{pid}/metadata/mods",
+
+                "/search/api/client/v7.0/items/{pid}/ocr/text",
+                "/search/api/client/v7.0/items/{pid}/ocr/alto",
+
+                "/search/api/client/v7.0/items/{pid}/foxml",
+                "/search/api/client/v7.0/items/{pid}/audio/{type}",
+                "/search/api/client/v7.0/items/{pid}/collection/cuttings",
+
+                "/search/api/client/v7.0/items/{pid}",
+
+                "/search/api/client/v7.0/pdf/selection",
+                "/search/api/client/v7.0/pdf/parent",
+                "/search/api/client/v7.0/pdf",
+
+                "/search/api/client/v7.0/user/auth/login",
+                "/search/api/client/v7.0/user/auth/logout",
+                "/search/api/client/v7.0/user/auth/token",
+                "/search/api/client/v7.0/user/actions",
+                "/search/api/client/v7.0/user",
+
+                "/search/api/client/v7.0/folders/{uuid}/items",
+                "/search/api/client/v7.0/folders/{uuid}",
+                "/search/api/client/v7.0/folders",
+
+                "/search/api/client/v7.0/locks/{hash}/refresh",
+                "/search/api/client/v7.0/locks/{hash}",
+
+                "/search/api/client/v7.0/info",
+
+                "/search/api/admin/v7.0/collections/{colpid}/delete_batch_clipitems",
+                "/search/api/admin/v7.0/collections/{colpid}/delete_clip_item",
+                "/search/api/admin/v7.0/collections/{colpid}/add_clip_item",
+                "/search/api/admin/v7.0/collections/{colpid}/items/delete_batch_items",
+                "/search/api/admin/v7.0/collections/{colpid}/items/{itempid}",
+                "/search/api/admin/v7.0/collections/{pid}/image/thumb",
+                "/search/api/admin/v7.0/collections/prefix",
+                "/search/api/admin/v7.0/collections/{pid}/items",
+                "/search/api/admin/v7.0/collections/{pid}",
+                "/search/api/admin/v7.0/collections",
+
+                "/search/api/admin/v7.0/files/download-path/{path}",
+                "/search/api/admin/v7.0/files/pidlist-dir/{path}",
+                "/search/api/admin/v7.0/files/input-data-dir-for_convert-and-import-ndk/{path}",
+                "/search/api/admin/v7.0/files/input-data-dir-for_import-foxml/{path}",
+                "/search/api/admin/v7.0/files/output-data-dir-for_nkplogs/{path}",
+                "/search/api/admin/v7.0/files/output-data-dir-for_collectionsbackup/{path}",
+
+                "/search/api/admin/v7.0/statistics/anual/csv",
+                "/search/api/admin/v7.0/statistics/logs",
+                "/search/api/admin/v7.0/statistics/search",
+                "/search/api/admin/v7.0/statistics/facets/csv/{type}",
+                "/search/api/admin/v7.0/statistics",
+
+                "/search/api/admin/v7.0/items/{pid}/children_order",
+                "/search/api/admin/v7.0/items/{pid}/foxml",
+                "/search/api/admin/v7.0/items/{pid}",
+                "/search/api/admin/v7.0/items/models",
+                "/search/api/admin/v7.0/items",
+
+                "/search/api/admin/v7.0/licenses/movedown/{id}",
+                "/search/api/admin/v7.0/licenses/moveup/{id}",
+                "/search/api/admin/v7.0/licenses/changeOrdering",
+                "/search/api/admin/v7.0/licenses/local/{id}",
+                "/search/api/admin/v7.0/licenses/local",
+                "/search/api/admin/v7.0/licenses/global",
+                "/search/api/admin/v7.0/licenses",
+
+                "/search/api/admin/v7.0/roles/{id}",
+                "/search/api/admin/v7.0/roles",
+
+                "/search/api/admin/v7.0/rights/licenses",
+                "/search/api/admin/v7.0/rights/criteria",
+                "/search/api/admin/v7.0/rights/params/{id}",
+                "/search/api/admin/v7.0/rights/params",
+                "/search/api/admin/v7.0/rights/resolve/{pid}",
+                "/search/api/admin/v7.0/rights/{id}",
+                "/search/api/admin/v7.0/rights",
+
+                "/search/api/admin/v7.0/processes/by_process_uuid/{process_uuid}/logs/err/lines",
+                "/search/api/admin/v7.0/processes/by_process_uuid/{process_uuid}/logs/out/lines",
+                "/search/api/admin/v7.0/processes/batches/by_first_process_id/{process_id}/execution",
+                "/search/api/admin/v7.0/processes/batches/by_first_process_id/{process_id}",
+                "/search/api/admin/v7.0/processes/by_process_uuid/{process_uuid}/logs/err",
+                "/search/api/admin/v7.0/processes/by_process_uuid/{process_uuid}/logs/out",
+                "/search/api/admin/v7.0/processes/by_process_uuid/{process_uuid}",
+                "/search/api/admin/v7.0/processes/by_process_id/{process_id}",
+                "/search/api/admin/v7.0/processes/owners",
+                "/search/api/admin/v7.0/processes/batches",
+                "/search/api/admin/v7.0/processes/workers",
+                "/search/api/admin/v7.0/processes",
+
+                "/search/api/admin/v7.0/repository/deleteDatastream",
+                "/search/api/admin/v7.0/repository/createExternalDatastream",
+                "/search/api/admin/v7.0/repository/createManagedDatastream",
+                "/search/api/admin/v7.0/repository/createXMLDatastream",
+                "/search/api/admin/v7.0/repository/delete",
+                "/search/api/admin/v7.0/repository/ingest",
+                "/search/api/admin/v7.0/repository/getLiterals",
+                "/search/api/admin/v7.0/repository/getRelations",
+                "/search/api/admin/v7.0/repository/getDatastreamNames",
+                "/search/api/admin/v7.0/repository/getDatastreamMetadata",
+                "/search/api/admin/v7.0/repository/getDatastreamContent",
+                "/search/api/admin/v7.0/repository/getMetadata",
+                "/search/api/admin/v7.0/repository/export",
+
+                "/search/api/admin/v7.0/workmode",
+
+                "/search/api/exts/v7.0/tokens/{clientid}",
+              ];
+
+              var uri = event.Get("request.request_uri");
+
+              if (!uri) {
+                return;
+              }
+
+              var uri_parts = uri.split("?");
+
+              var path = uri_parts[0];
+              var query_str = uri_parts.length > 1 ? uri_parts[1] : "";
+              var endpoint = "none";
+
+              if (path.length > 1) {
+                path = path.replace(/\/+$/, "");
+              }
+
+              var query = {};
+              if (query_str.length > 0) {
+                var pairs = query_str.split("&");
+
+                for (var i = 0; i < pairs.length; i++) {
+                  var kv = pairs[i].split("=");
+                  var key = decodeURIComponent(kv[0]).replace(/\./g, "_");
+                  var value = kv.length > 1 ? decodeURIComponent(kv[1]) : "";
+
+                  if (query.hasOwnProperty(key)) {
+                    if (Object.prototype.toString.call(query[key]) === "[object Array]") {
+                      query[key].push(value);
+                    } else {
+                      query[key] = [query[key], value];
+                    }
+                  } else {
+                    query[key] = value;
+                  }
+                }
+              }
+
+              if (path != null) {
+                endpoint = "unknown";
+
+                for (var i = 0; i < endpoints.length; i++) {
+                  var pattern = endpoints[i].replace(/\{[a-z_]+\}/g, "[^/]+");
+                  var regex = new RegExp("^" + pattern + "$");
+
+                  if (regex.test(path)) {
+                    endpoint = endpoints[i];
+                    break;
+                  }
+                }
+              }
+
+              event.Put("request.url.path", path);
+              event.Put("request.url.query", query);
+              event.Put("request.endpoint", endpoint);
+
+              // Parse client from referrer hostname
+              var referrer = event.Get("request.http_referer");
+              var client = "unknown";
+              if (referrer && referrer !== "-" && referrer !== "") {
+                var match = referrer.match(/^https?:\/\/([^\/]+)/);
+                if (match) {
+                  var hostname = match[1];
+                  if (hostname.indexOf("admin") !== -1) {
+                    client = "admin";
+                  } else if (hostname.indexOf("pdf") !== -1) {
+                    client = "public-pdf";
+                  } else {
+                    client = "public";
+                  }
+                  event.Put("request.referrer_host", hostname);
+                }
+              }
+              event.Put("request.client", client);
+
+              // Rename JSON fields to consistent names
+              event.Put("request.method", event.Get("request.request_method"));
+              event.Put("request.referrer", referrer || "-");
+              event.Put("request.user_agent", event.Get("request.http_user_agent") || "-");
+              event.Put("request.client_ip", event.Get("request.remote_addr"));
+            }
+      - convert:
+          fields:
+            - {from: "request.body_bytes_sent", to: "request.bytes", type: long}
+            - {from: "request.request_time", to: "request.request_time", type: float}
+            - {from: "request.status", to: "request.status", type: string}
+            - {from: "request.client_ip", to: "request.client_ip", type: ip}
+          ignore_missing: true
+      - drop_fields:
+          fields:
+            - "message"
+            - "request.time_local"
+            - "request.remote_addr"
+            - "request.request_method"
+            - "request.request_uri"
+            - "request.body_bytes_sent"
+            - "request.http_referer"
+            - "request.http_user_agent"
+
+  k7-access-logs-pipeline.json: |
+    {
+        "description": "Add geoip + ASN info",
+        "processors": [
+            {
+                "geoip": {
+                    "field": "request.client_ip",
+                    "target_field": "request.geo",
+                    "ignore_missing": true
+                }
+            },
+            {
+                "geoip": {
+                    "field": "request.client_ip",
+                    "target_field": "request.asn",
+                    "database_file": "GeoLite2-ASN.mmdb",
+                    "ignore_missing": true
+                }
+            }
+        ]
+    }
+
+  k7-access-logs-template.json: |
+    {
+      "index_patterns": ["k7-access-logs-*"],
+      "template": {
+        "mappings": {
+          "properties": {
+            "request": {
+              "properties": {
+                "client_ip": { "type": "ip" },
+                "method": { "type": "keyword" },
+                "endpoint": { "type": "keyword" },
+                "url": {
+                  "properties": {
+                    "path": { "type": "keyword" },
+                    "query": {
+                      "type": "object",
+                      "dynamic": true,
+                      "properties": {
+                        "*": { "type": "keyword" }
+                      }
+                    }
+                  }
+                },
+                "status": { "type": "keyword" },
+                "bytes": { "type": "long" },
+                "request_time": { "type": "float" },
+                "referrer": { "type": "keyword" },
+                "referrer_host": { "type": "keyword" },
+                "user_agent": {
+                  "type": "text",
+                  "fields": {
+                    "keyword": {
+                      "type": "keyword",
+                      "ignore_above": 512
+                    }
+                  }
+                },
+                "client": { "type": "keyword" },
+                "geo": {
+                  "properties": {
+                    "continent_name": { "type": "keyword" },
+                    "country_name": { "type": "keyword" },
+                    "country_iso_code": { "type": "keyword" },
+                    "region_name": { "type": "keyword" },
+                    "region_iso_code": { "type": "keyword" },
+                    "city_name": { "type": "keyword" },
+                    "location": { "type": "geo_point" }
+                  }
+                },
+                "asn": {
+                  "properties": {
+                    "ip": { "type": "ip" },
+                    "asn": { "type": "long" },
+                    "organization_name": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "network": { "type": "keyword" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
+  setup-elasticsearch.sh: |
+    #!/bin/sh
+
+    ES_URL="http://elasticsearch.{{ .Values.namespace }}.svc.cluster.local:9200"
+    MAX_RETRIES=5
+    SLEEP=5
+
+    TEMPLATE_NAME="k7-access-logs-template"
+    TEMPLATE_FILE="/setup/k7-access-logs-template.json"
+
+    PIPELINE_NAME="k7-access-logs"
+    PIPELINE_FILE="/setup/k7-access-logs-pipeline.json"
+
+    # --- Setup index template ---
+    i=0
+    while [ $i -lt $MAX_RETRIES ]; do
+        echo "Attempt $((i+1)) to create index template..."
+        if curl -s -X PUT "$ES_URL/_index_template/$TEMPLATE_NAME" \
+                -H 'Content-Type: application/json' \
+                -d @"$TEMPLATE_FILE"; then
+            echo "Index template created successfully!"
+            break
+        fi
+        echo "Failed, retrying in $SLEEP seconds..."
+        i=$((i+1))
+        sleep $SLEEP
+    done
+
+    if [ $i -eq $MAX_RETRIES ]; then
+        echo "Failed to create index template after $MAX_RETRIES attempts."
+        exit 1
+    fi
+
+    # --- Setup ingest pipeline ---
+    i=0
+    while [ $i -lt $MAX_RETRIES ]; do
+        echo "Attempt $((i+1)) to create pipeline..."
+        if curl -s -X PUT "$ES_URL/_ingest/pipeline/$PIPELINE_NAME" \
+                -H 'Content-Type: application/json' \
+                -d @"$PIPELINE_FILE"; then
+            echo "Pipeline created successfully!"
+            exit 0
+        fi
+        echo "Failed, retrying in $SLEEP seconds..."
+        i=$((i+1))
+        sleep $SLEEP
+    done
+
+    echo "Failed to create pipeline after $MAX_RETRIES attempts."
+    exit 1
+---
+{{/* ---------- Elasticsearch Deployment ---------- */}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: elasticsearch
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "kramerius.labels" . | nindent 4 }}
+    app.kubernetes.io/name: elasticsearch
+    app.kubernetes.io/component: elasticsearch
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: elasticsearch
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/component: elasticsearch
+        app.kubernetes.io/name: elasticsearch
+    spec:
+      {{- include "kramerius.imagePullSecrets" . | nindent 6 }}
+      containers:
+        - name: elasticsearch
+          image: {{ .Values.elk.elasticsearch.image.repository }}:{{ .Values.elk.elasticsearch.image.tag }}
+          imagePullPolicy: {{ .Values.elk.elasticsearch.image.pullPolicy | default "IfNotPresent" }}
+          ports:
+            - containerPort: 9200
+              name: http
+              protocol: TCP
+          volumeMounts:
+            - name: elasticsearch-data
+              mountPath: /usr/share/elasticsearch/data
+          envFrom:
+            - configMapRef:
+                name: elasticsearch-env-config
+          resources:
+            {{- toYaml .Values.elk.elasticsearch.resources | nindent 12 }}
+      volumes:
+        - name: elasticsearch-data
+          persistentVolumeClaim:
+            claimName: elasticsearch-data
+---
+{{/* ---------- Elasticsearch Service ---------- */}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: elasticsearch
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "kramerius.labels" . | nindent 4 }}
+    app.kubernetes.io/component: elasticsearch
+spec:
+  ports:
+    - port: 9200
+      targetPort: 9200
+      protocol: TCP
+      name: http
+  selector:
+    app.kubernetes.io/component: elasticsearch
+---
+{{/* ---------- Kibana Deployment ---------- */}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kibana
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "kramerius.labels" . | nindent 4 }}
+    app.kubernetes.io/name: kibana
+    app.kubernetes.io/component: kibana
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: kibana
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/component: kibana
+        app.kubernetes.io/name: kibana
+    spec:
+      {{- include "kramerius.imagePullSecrets" . | nindent 6 }}
+      containers:
+        - name: kibana
+          image: {{ .Values.elk.kibana.image.repository }}:{{ .Values.elk.kibana.image.tag }}
+          imagePullPolicy: {{ .Values.elk.kibana.image.pullPolicy | default "IfNotPresent" }}
+          ports:
+            - containerPort: 5601
+              name: http
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: kibana-env-config
+          resources:
+            {{- toYaml .Values.elk.kibana.resources | nindent 12 }}
+---
+{{/* ---------- Kibana Service ---------- */}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: kibana
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "kramerius.labels" . | nindent 4 }}
+    app.kubernetes.io/component: kibana
+spec:
+  ports:
+    - port: 80
+      targetPort: 5601
+      protocol: TCP
+      name: http
+  selector:
+    app.kubernetes.io/component: kibana
+  type: ClusterIP
+---
+{{/* ---------- Filebeat Deployment ---------- */}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: filebeat
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "kramerius.labels" . | nindent 4 }}
+    app.kubernetes.io/name: filebeat
+    app.kubernetes.io/component: filebeat
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: filebeat
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/component: filebeat
+        app.kubernetes.io/name: filebeat
+      annotations:
+        checksum/filebeat-config: {{ include "kramerius.checksum.elkPod" . | quote }}
+    spec:
+      {{- include "kramerius.imagePullSecrets" . | nindent 6 }}
+      initContainers:
+        - name: setup-elasticsearch
+          image: curlimages/curl:latest
+          command: ["sh", "/setup/setup-elasticsearch.sh"]
+          volumeMounts:
+            - name: filebeat-config
+              mountPath: /setup/setup-elasticsearch.sh
+              subPath: setup-elasticsearch.sh
+            - name: filebeat-config
+              mountPath: /setup/k7-access-logs-template.json
+              subPath: k7-access-logs-template.json
+            - name: filebeat-config
+              mountPath: /setup/k7-access-logs-pipeline.json
+              subPath: k7-access-logs-pipeline.json
+      containers:
+        - name: filebeat
+          image: {{ .Values.elk.filebeat.image.repository }}:{{ .Values.elk.filebeat.image.tag }}
+          imagePullPolicy: {{ .Values.elk.filebeat.image.pullPolicy | default "IfNotPresent" }}
+          command: ["filebeat", "-e", "--strict.perms=false"]
+          volumeMounts:
+            - name: filebeat-config
+              mountPath: /usr/share/filebeat/filebeat.yml
+              subPath: filebeat.yml
+            - name: filebeat-data
+              mountPath: /usr/share/filebeat/data
+            - name: gateway-access-logs
+              mountPath: /usr/share/filebeat/logs/gateway
+              readOnly: true
+          resources:
+            {{- toYaml .Values.elk.filebeat.resources | nindent 12 }}
+      volumes:
+        - name: filebeat-config
+          configMap:
+            name: filebeat-config
+        - name: filebeat-data
+          persistentVolumeClaim:
+            claimName: filebeat-data
+        - name: gateway-access-logs
+          persistentVolumeClaim:
+            claimName: gateway-access-logs
+---
+{{/* ---------- Kibana Ingress ---------- */}}
+{{- if and .Values.ingress.enabled .Values.ingress.kibana.host }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: kramerius-kibana
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "kramerius.labels" . | nindent 4 }}
+    app.kubernetes.io/component: kibana
+  annotations:
+{{- $kibanaBase := deepCopy (.Values.ingress.annotations | default dict) }}
+{{- if .Values.ingress.kibana.whitelistSourceRange }}
+{{- $_ := set $kibanaBase "nginx.ingress.kubernetes.io/whitelist-source-range" .Values.ingress.kibana.whitelistSourceRange }}
+{{- end }}
+{{- include "kramerius.ingressAnnotationsWithOptionalOAuth" (dict "base" $kibanaBase "oauthProtected" (.Values.ingress.kibana.oauthProtected | default false) "authUrl" .Values.ingress.oauth.authUrl "authSignin" .Values.ingress.oauth.authSignin) | nindent 4 }}
+spec:
+  {{- if .Values.ingress.className }}
+  ingressClassName: {{ .Values.ingress.className }}
+  {{- end }}
+  tls:
+    - hosts:
+        - {{ .Values.ingress.kibana.host | quote }}
+      secretName: {{ .Values.ingress.kibana.tls.secretName }}
+  rules:
+    - host: {{ .Values.ingress.kibana.host | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: kibana
+                port:
+                  name: http
+{{- end }}
+---
+{{/* ---------- Kibana Dashboards ConfigMap ---------- */}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kibana-dashboards
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "kramerius.labels" . | nindent 4 }}
+    app.kubernetes.io/component: kibana
+data:
+  dashboards.ndjson: |
+    {{- .Files.Get "files/kibana-dashboards.ndjson" | nindent 4 }}
+  setup-kibana.sh: |
+    #!/bin/sh
+
+    KIBANA_URL="http://kibana.{{ .Values.namespace }}.svc.cluster.local:80"
+    MAX_RETRIES=30
+    SLEEP=10
+
+    # --- Wait for Kibana to be ready ---
+    echo "Waiting for Kibana to become ready..."
+    i=0
+    while [ $i -lt $MAX_RETRIES ]; do
+        STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$KIBANA_URL/api/status")
+        if [ "$STATUS" = "200" ]; then
+            echo "Kibana is ready!"
+            break
+        fi
+        echo "Kibana not ready yet (HTTP $STATUS), retrying in $SLEEP seconds... ($((i+1))/$MAX_RETRIES)"
+        i=$((i+1))
+        sleep $SLEEP
+    done
+
+    if [ $i -eq $MAX_RETRIES ]; then
+        echo "Kibana did not become ready after $MAX_RETRIES attempts."
+        exit 1
+    fi
+
+    # --- Import saved objects (dashboards, index patterns, etc.) ---
+    echo "Importing Kibana dashboards..."
+    RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
+        "$KIBANA_URL/api/saved_objects/_import?overwrite=true" \
+        -H "kbn-xsrf: true" \
+        -F "file=@/dashboards/dashboards.ndjson")
+
+    HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+    BODY=$(echo "$RESPONSE" | sed '$d')
+
+    echo "Response: $BODY"
+
+    if [ "$HTTP_CODE" = "200" ]; then
+        echo "Dashboards imported successfully!"
+        exit 0
+    else
+        echo "Failed to import dashboards (HTTP $HTTP_CODE)."
+        exit 1
+    fi
+---
+{{/* ---------- Kibana Dashboards Init Job ---------- */}}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: kibana-dashboards-init-{{ .Files.Get "files/kibana-dashboards.ndjson" | sha256sum | trunc 8 }}
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "kramerius.labels" . | nindent 4 }}
+    app.kubernetes.io/component: kibana
+spec:
+  backoffLimit: 3
+  ttlSecondsAfterFinished: 300
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/component: kibana-init
+    spec:
+      {{- include "kramerius.imagePullSecrets" . | nindent 6 }}
+      restartPolicy: OnFailure
+      containers:
+        - name: setup-kibana
+          image: curlimages/curl:latest
+          command: ["sh", "/scripts/setup-kibana.sh"]
+          volumeMounts:
+            - name: dashboards
+              mountPath: /dashboards/dashboards.ndjson
+              subPath: dashboards.ndjson
+            - name: dashboards
+              mountPath: /scripts/setup-kibana.sh
+              subPath: setup-kibana.sh
+      volumes:
+        - name: dashboards
+          configMap:
+            name: kibana-dashboards
+---
+{{/* ---------- Slack Alerts (429 & 5xx monitoring) ---------- */}}
+{{- if .Values.elk.slackAlerts.slackWebhookUrl }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: elk-slack-alerts
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "kramerius.labels" . | nindent 4 }}
+    app.kubernetes.io/component: elk-slack-alerts
+data:
+  check-alerts.sh: |
+    #!/bin/sh
+    set -e
+
+    ES_URL="http://elasticsearch.{{ .Values.namespace }}.svc.cluster.local:9200"
+    SLACK_WEBHOOK_URL="{{ .Values.elk.slackAlerts.slackWebhookUrl }}"
+    WINDOW_MINUTES="{{ .Values.elk.slackAlerts.windowMinutes }}"
+    THRESHOLD_429="{{ .Values.elk.slackAlerts.threshold429 }}"
+    KIBANA_URL="https://{{ .Values.ingress.kibana.host }}"
+
+    send_slack() {
+      curl -sf -X POST "$SLACK_WEBHOOK_URL" \
+        -H 'Content-Type: application/json' \
+        -d "$1"
+    }
+
+    # ==================== 429 Rate Limit Report ====================
+    echo "Checking for 429 responses in the last ${WINDOW_MINUTES} minutes..."
+
+    RESULT_429=$(curl -sf "$ES_URL/k7-access-logs-*/_search" \
+      -H 'Content-Type: application/json' \
+      -d "{
+        \"size\": 0,
+        \"query\": {
+          \"bool\": {
+            \"filter\": [
+              { \"term\": { \"request.status\": \"429\" } },
+              { \"range\": { \"@timestamp\": { \"gte\": \"now-${WINDOW_MINUTES}m\" } } }
+            ]
+          }
+        },
+        \"aggs\": {
+          \"by_ip\": {
+            \"terms\": { \"field\": \"request.client_ip\", \"size\": 50, \"min_doc_count\": ${THRESHOLD_429} },
+            \"aggs\": {
+              \"referrers\": {
+                \"terms\": { \"field\": \"request.referrer\", \"size\": 10 }
+              },
+              \"user_agents\": {
+                \"terms\": { \"field\": \"request.user_agent.keyword\", \"size\": 10 }
+              },
+              \"endpoints\": {
+                \"terms\": { \"field\": \"request.endpoint\", \"size\": 20 }
+              }
+            }
+          }
+        }
+      }")
+
+    IP_COUNT=$(echo "$RESULT_429" | jq '.aggregations.by_ip.buckets | length')
+
+    if [ "$IP_COUNT" -gt 0 ]; then
+      echo "Found ${IP_COUNT} IP(s) exceeding 429 threshold, sending Slack alert..."
+
+      # Build a Slack message per offending IP
+      BLOCKS=$(echo "$RESULT_429" | jq -r --arg win "$WINDOW_MINUTES" --arg thr "$THRESHOLD_429" --arg kibana "$KIBANA_URL" '
+        [
+          { "type": "header", "text": { "type": "plain_text", "text": ":warning: 429 Rate Limit Alert" } },
+          { "type": "section", "text": { "type": "mrkdwn", "text": ("*Window:* last " + $win + " min  |  *Threshold:* >= " + $thr + " requests  |  <" + $kibana + "|:kibana: Investigate in Kibana>") } }
+        ] + [
+          .aggregations.by_ip.buckets[] | (
+            { "type": "section", "text": { "type": "mrkdwn", "text": (
+              "*IP:* `" + .key + "`  —  *" + (.doc_count | tostring) + " requests*\n" +
+              "*Referrers:* " + ([.referrers.buckets[] | ("`" + .key + "` (" + (.doc_count | tostring) + ")")] | join(", ")) + "\n" +
+              "*User-Agents:* " + ([.user_agents.buckets[] | ("`" + .key + "` (" + (.doc_count | tostring) + ")")] | join(", ")) + "\n" +
+              "*Endpoints:*\n" + ([.endpoints.buckets[] | ("  " + .key + " — " + (.doc_count | tostring))] | join("\n"))
+            ) } }
+          )
+        ]')
+
+      send_slack "{\"blocks\":${BLOCKS}}"
+      echo "429 alert sent."
+    else
+      echo "No IPs above 429 threshold."
+    fi
+
+    # ==================== 5xx Server Error Report ====================
+    echo "Checking for 5xx responses in the last ${WINDOW_MINUTES} minutes..."
+
+    RESULT_5XX=$(curl -sf "$ES_URL/k7-access-logs-*/_search" \
+      -H 'Content-Type: application/json' \
+      -d "{
+        \"size\": 0,
+        \"query\": {
+          \"bool\": {
+            \"filter\": [
+              { \"range\": { \"@timestamp\": { \"gte\": \"now-${WINDOW_MINUTES}m\" } } },
+              { \"regexp\": { \"request.status\": \"5[0-9][0-9]\" } }
+            ]
+          }
+        },
+        \"aggs\": {
+          \"by_status\": {
+            \"terms\": { \"field\": \"request.status\", \"size\": 10 },
+            \"aggs\": {
+              \"endpoints\": {
+                \"terms\": { \"field\": \"request.endpoint\", \"size\": 20 }
+              }
+            }
+          }
+        }
+      }")
+
+    STATUS_COUNT=$(echo "$RESULT_5XX" | jq '.aggregations.by_status.buckets | length')
+
+    if [ "$STATUS_COUNT" -gt 0 ]; then
+      echo "Found 5xx errors, sending Slack alert..."
+
+      BLOCKS_5XX=$(echo "$RESULT_5XX" | jq -r --arg win "$WINDOW_MINUTES" --arg kibana "$KIBANA_URL" '
+        [
+          { "type": "header", "text": { "type": "plain_text", "text": ":fire: 5xx Server Error Alert" } },
+          { "type": "section", "text": { "type": "mrkdwn", "text": ("*Window:* last " + $win + " min  |  <" + $kibana + "|:kibana: Investigate in Kibana>") } }
+        ] + [
+          .aggregations.by_status.buckets[] | (
+            { "type": "section", "text": { "type": "mrkdwn", "text": (
+              "*Status " + .key + "*  —  *" + (.doc_count | tostring) + " total requests*\n" +
+              "*Endpoints:*\n" + ([.endpoints.buckets[] | ("  " + .key + " — " + (.doc_count | tostring))] | join("\n"))
+            ) } }
+          )
+        ]')
+
+      send_slack "{\"blocks\":${BLOCKS_5XX}}"
+      echo "5xx alert sent."
+    else
+      echo "No 5xx errors found."
+    fi
+
+    echo "Done."
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: elk-slack-alerts
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "kramerius.labels" . | nindent 4 }}
+    app.kubernetes.io/component: elk-slack-alerts
+spec:
+  schedule: {{ .Values.elk.slackAlerts.schedule | quote }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      ttlSecondsAfterFinished: 300
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/component: elk-slack-alerts
+        spec:
+          {{- include "kramerius.imagePullSecrets" . | nindent 10 }}
+          restartPolicy: Never
+          containers:
+            - name: slack-alerts
+              image: {{ .Values.elk.slackAlerts.image.repository }}:{{ .Values.elk.slackAlerts.image.tag }}
+              imagePullPolicy: {{ .Values.elk.slackAlerts.image.pullPolicy | default "IfNotPresent" }}
+              command: ["sh", "/scripts/check-alerts.sh"]
+              volumeMounts:
+                - name: scripts
+                  mountPath: /scripts/check-alerts.sh
+                  subPath: check-alerts.sh
+          volumes:
+            - name: scripts
+              configMap:
+                name: elk-slack-alerts
+{{- end }}
+{{- end }}

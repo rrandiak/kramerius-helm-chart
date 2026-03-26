@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kramerius-tomcat-logging
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "kramerius.labels" . | nindent 4 }}
+data:
+  logging.properties: |
+    {{- .Values.tomcatShared.loggingProperties | nindent 4 }}

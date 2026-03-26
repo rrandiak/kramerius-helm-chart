@@ -1,0 +1,56 @@
+# Minimal override values — only fields that have no working default.
+# Use alongside the base values.yaml:
+#
+#   helm upgrade --install kramerius ./helm/kramerius \
+#     --namespace kramerius --create-namespace \
+#     -f values.yaml \
+#     -f values.minimal.yaml
+
+namespace: kramerius
+
+defaultStorageClass: nfs
+
+storages:
+  # Single NFS server for all volumes — override nfsServer per entry if needed.
+  defaultNfsServer: nfs.example.com
+
+  akubra-object-store:
+    nfsPath: /data/kramerius/akubra/objectStore
+
+  akubra-datastream-store:
+    nfsPath: /data/kramerius/akubra/datastreamStore
+
+  import:
+    nfsPath: /data/kramerius/import
+
+  imageserver:
+    nfsPath: /data/imageserver
+
+  audioserver:
+    nfsPath: /data/audioserver
+
+  pdfserver:
+    nfsPath: /data/pdfserver
+
+  javaagents:
+    nfsPath: /data/javaagents
+
+auth:
+  keycloak:
+    realm: kramerius
+    authServerUrl: https://keycloak.example.com/
+    resource: krameriusClient
+    secret: change-me
+
+cnpg:
+  processManager:
+    password: change-me
+  kramerius:
+    password: change-me
+
+ingress:
+  host: "k7.example.com"
+  admin:
+    host: "admin.k7.example.com"
+  processManager:
+    host: "process-manager.k7.example.com"

@@ -1,0 +1,20 @@
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: {{ .Values.cnpg.kramerius.cluster.name }}
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "kramerius.labels" . | nindent 4 }}
+spec:
+  instances: {{ .Values.cnpg.kramerius.cluster.instances }}
+  storage:
+    size: {{ .Values.cnpg.kramerius.storage.size }}
+    {{- if .Values.cnpg.kramerius.storage.storageClass }}
+    storageClass: {{ .Values.cnpg.kramerius.storage.storageClass }}
+    {{- end }}
+  bootstrap:
+    initdb:
+      database: kramerius
+      owner: kramerius
+      secret:
+        name: {{ .Values.cnpg.kramerius.cluster.name }}-secret

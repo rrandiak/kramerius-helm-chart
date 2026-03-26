@@ -1,0 +1,200 @@
+{{/*
+Worker groups - one StatefulSet + headless Service + ConfigMap per group.
+In-cluster WORKER_BASE_URL (pod DNS) lets process-manager call each worker; not exposed via Ingress.
+*/}}
+{{- range .Values.workerGroups }}
+{{- $group := . }}
+{{- $root := $ }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: worker-{{ $group.name }}-config
+  namespace: {{ $root.Values.namespace }}
+  labels:
+    {{- include "kramerius.labels" $root | nindent 4 }}
+    app.kubernetes.io/name: worker-{{ $group.name }}
+data:
+  configuration.properties: |
+    {{- include "kramerius.configurationProperties.merged" (dict "root" $root "extra" $group.config.configurationPropertiesExtra) | nindent 4 }}
+  {{- if $group.config.serverXml }}
+  server.xml: |
+    {{- $group.config.serverXml | nindent 4 }}
+  {{- end }}
+  lp.xml: |
+    {{- $group.config.lpXml | nindent 4 }}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: worker-{{ $group.name }}
+  namespace: {{ $root.Values.namespace }}
+  labels:
+    {{- include "kramerius.labels" $root | nindent 4 }}
+    app.kubernetes.io/name: worker-{{ $group.name }}
+    app.kubernetes.io/component: worker
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: worker-{{ $group.name }}
+  namespace: {{ $root.Values.namespace }}
+  labels:
+    {{- include "kramerius.labels" $root | nindent 4 }}
+    app.kubernetes.io/name: worker-{{ $group.name }}
+    app.kubernetes.io/component: worker
+spec:
+  replicas: {{ $group.replicas }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: worker-{{ $group.name }}
+      app.kubernetes.io/component: worker
+  serviceName: worker-{{ $group.name }}
+  podManagementPolicy: OrderedReady
+  updateStrategy:
+    type: RollingUpdate
+  revisionHistoryLimit: 2
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: worker-{{ $group.name }}
+        app.kubernetes.io/component: worker
+      annotations:
+        checksum/worker-values: {{ include "kramerius.checksum.workerPod" (dict "root" $root "group" $group) | quote }}
+    spec:
+      serviceAccountName: worker-{{ $group.name }}
+      {{- include "kramerius.imagePullSecrets" $root | nindent 6 }}
+      containers:
+        - name: worker-{{ $group.name }}
+          image: {{ include "kramerius.workerImage" (dict "group" $group "values" $root.Values) }}
+          imagePullPolicy: {{ include "kramerius.workerImagePullPolicy" (dict "group" $group "values" $root.Values) }}
+          ports:
+            - containerPort: 8080
+              name: http
+          envFrom:
+            - configMapRef:
+                name: timezone-config
+          env:
+            # In-cluster callback URL for process-manager (headless Service DNS, not public)
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: WORKER_BASE_URL
+              value: "http://$(POD_NAME).worker-{{ $group.name }}.{{ $root.Values.namespace }}.svc.cluster.local:8080/worker/api/"
+            - name: MANAGER_BASE_URL
+              value: {{ include "kramerius.processManagerUrl" $root | quote }}
+            {{- if $group.profilesSubset }}
+            - name: PROFILES_SUBSET
+              value: {{ $group.profilesSubset | quote }}
+            {{- end }}
+            {{- range $k, $v := $group.env }}
+            {{- if ne $k "CATALINA_OPTS" }}
+            - name: {{ $k }}
+              value: {{ $v | quote }}
+            {{- end }}
+            {{- end }}
+            {{- if not (hasKey $group.env "HAZELCAST_SERVER_ADDRESSES") }}
+            - name: HAZELCAST_SERVER_ADDRESSES
+              value: {{ include "kramerius.hazelcastServerAddresses" $root | quote }}
+            {{- end }}
+            - name: CATALINA_OPTS
+              value: {{ include "kramerius.mergeCatalinaOpts" (dict "root" $root "base" (index $group.env "CATALINA_OPTS" | default "") "componentExtra" (index $group "javaagentExtraCatalinaOpts" | default "")) | quote }}
+          volumeMounts:
+{{- include "kramerius.javaagentVolumeMounts" (dict "root" $root) | nindent 12 }}
+            - mountPath: /root/.kramerius4
+              name: worker-config-dir
+            - mountPath: /root/.kramerius4/configuration.properties
+              name: worker-config
+              subPath: configuration.properties
+              readOnly: true
+            - mountPath: /usr/local/tomcat/conf/logging.properties
+              name: kramerius-tomcat-logging
+              subPath: logging.properties
+              readOnly: true
+            - mountPath: /root/.kramerius4/lp.xml
+              name: worker-config
+              subPath: lp.xml
+              readOnly: true
+            {{- if $group.config.serverXml }}
+            - mountPath: /usr/local/tomcat/conf/server.xml
+              name: worker-config
+              subPath: server.xml
+              readOnly: true
+            {{- end }}
+            - mountPath: /usr/local/tomcat/logs
+              name: worker-tomcat-logs
+              readOnly: false
+            - mountPath: /data/akubra/objectStore
+              name: akubra-objectstore
+              readOnly: false
+            - mountPath: /data/akubra/datastreamStore
+              name: akubra-datastream
+              readOnly: false
+            - mountPath: /data/import
+              name: import-storage
+              readOnly: false
+            {{- with (index $root.Values.storages "imageserver") }}{{- if .type }}
+            - mountPath: /data/imageserver
+              name: imageserver-storage
+              readOnly: false
+            {{- end }}{{- end }}
+            {{- with (index $root.Values.storages "audioserver") }}{{- if .type }}
+            - mountPath: /data/audioserver
+              name: audioserver-storage
+              readOnly: false
+            {{- end }}{{- end }}
+            {{- with (index $root.Values.storages "pdfserver") }}{{- if .type }}
+            - mountPath: /data/pdfserver
+              name: pdfserver-storage
+              readOnly: false
+            {{- end }}{{- end }}
+          {{- with $group.livenessProbe }}
+          livenessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with $group.readinessProbe }}
+          readinessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          resources:
+            {{- toYaml $group.resources | nindent 12 }}
+      volumes:
+        - name: worker-config-dir
+          emptyDir: {}
+        - name: worker-config
+          configMap:
+            name: worker-{{ $group.name }}-config
+        - name: kramerius-tomcat-logging
+          configMap:
+            name: kramerius-tomcat-logging
+{{ include "kramerius.javaagentVolumes" (dict "root" $root) | nindent 8 }}
+{{- include "kramerius.sharedStorageVolume" (dict "root" $root "volumeName" "akubra-objectstore" "storageKey" "akubra-object-store") | nindent 8 }}
+{{- include "kramerius.sharedStorageVolume" (dict "root" $root "volumeName" "akubra-datastream" "storageKey" "akubra-datastream-store") | nindent 8 }}
+{{- include "kramerius.sharedStorageVolume" (dict "root" $root "volumeName" "import-storage" "storageKey" "import") | nindent 8 }}
+{{- include "kramerius.sharedStorageVolume" (dict "root" $root "volumeName" "imageserver-storage" "storageKey" "imageserver") | nindent 8 }}
+{{- include "kramerius.sharedStorageVolume" (dict "root" $root "volumeName" "audioserver-storage" "storageKey" "audioserver") | nindent 8 }}
+{{- include "kramerius.sharedStorageVolume" (dict "root" $root "volumeName" "pdfserver-storage" "storageKey" "pdfserver") | nindent 8 }}
+{{- include "kramerius.tomcatLogsNfsVolume" (dict "root" $root "volumeName" "worker-tomcat-logs" "tomcatLogs" ( $group.tomcatLogs | default $root.Values.workerTomcatLogs )) | nindent 8 }}
+{{- include "kramerius.tomcatLogsVolumeClaimTemplates" (dict "root" $root "volumeName" "worker-tomcat-logs" "tomcatLogs" ( $group.tomcatLogs | default $root.Values.workerTomcatLogs )) | nindent 2 }}
+---
+{{/* Headless service - required for stable pod DNS names used in WORKER_BASE_URL */}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: worker-{{ $group.name }}
+  namespace: {{ $root.Values.namespace }}
+  labels:
+    {{- include "kramerius.labels" $root | nindent 4 }}
+    app.kubernetes.io/name: worker-{{ $group.name }}
+    app.kubernetes.io/component: worker
+spec:
+  clusterIP: None
+  selector:
+    app.kubernetes.io/name: worker-{{ $group.name }}
+    app.kubernetes.io/component: worker
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8080
+{{- end }}

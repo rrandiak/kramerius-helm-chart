@@ -1,0 +1,389 @@
+{{/* OpenResty edge gateway: curator/public routing + request/download quotas via lua_shared_dict (in-memory per pod) */}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gateway-openresty-errors
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "kramerius.labels" . | nindent 4 }}
+    app.kubernetes.io/name: gateway
+    app.kubernetes.io/component: gateway
+data:
+  429.body: |
+{{ .Values.gateway.error429 | default "Too Many Requests" | nindent 4 }}
+  429.download.body: |
+{{ .Values.gateway.error429Download | default "Download quota exceeded for this period. Try again later." | nindent 4 }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gateway-openresty-lua
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "kramerius.labels" . | nindent 4 }}
+    app.kubernetes.io/name: gateway
+    app.kubernetes.io/component: gateway
+data:
+{{- $ph := .Values.gateway.peakHours | default dict }}
+  gateway_common.lua: |
+    local _M = {}
+
+    function _M.client_ip()
+      return ngx.var.remote_addr or "unknown"
+    end
+
+    function _M.pick_rule(uri, rules)
+      if not rules then return nil end
+      for _, rule in ipairs(rules) do
+        local prefix = rule.pathPrefix or "/"
+        if string.sub(uri, 1, #prefix) == prefix then
+          local suffix = rule.pathSuffix
+          if not suffix or suffix == "" or string.sub(uri, -#suffix) == suffix then
+            return rule
+          end
+        end
+      end
+      return nil
+    end
+
+    function _M.ep_token(prefix)
+      return ngx.md5(prefix):sub(1, 16)
+    end
+
+    return _M
+  ratelimit_config.lua: |
+    return {
+      peakHours = { enabled = {{ $ph.enabled | default false }}, from = {{ $ph.from | default 9 }}, to = {{ $ph.to | default 18 }} },
+      rules = {
+    {{- range .Values.gateway.rateLimits }}
+        { pathPrefix = {{ .pathPrefix | quote }}, pathSuffix = {{ .pathSuffix | default "" | quote }}, maxRequests = {{ if hasKey . "maxRequests" }}{{ .maxRequests }}{{ else }}nil{{ end }}, peakMaxRequests = {{ if hasKey . "peakMaxRequests" }}{{ .peakMaxRequests }}{{ else }}nil{{ end }}, offPeakMaxRequests = {{ if hasKey . "offPeakMaxRequests" }}{{ .offPeakMaxRequests }}{{ else }}nil{{ end }}, windowSeconds = {{ .windowSeconds }} },
+    {{- end }}
+      }
+    }
+  download_limit_config.lua: |
+    return {
+      rules = {
+    {{- range .Values.gateway.downloadLimits }}
+        { pathPrefix = {{ .pathPrefix | quote }}, pathSuffix = {{ .pathSuffix | default "" | quote }}, maxBytes = {{ .maxBytes }}, peakMaxBytes = {{ if hasKey . "peakMaxBytes" }}{{ .peakMaxBytes }}{{ else }}nil{{ end }}, offPeakMaxBytes = {{ if hasKey . "offPeakMaxBytes" }}{{ .offPeakMaxBytes }}{{ else }}nil{{ end }}, windowSeconds = {{ .windowSeconds }} },
+    {{- end }}
+      }
+    }
+  access_ratelimit.lua: |
+    local common = require "gateway_common"
+    local limits = require "ratelimit_config"
+    local dlc = require "download_limit_config"
+
+    local function is_peak_hour(peak)
+      if not peak or not peak.enabled then
+        return false
+      end
+      local t = os.date("*t")
+      local h = t.hour
+      local fhr, thr = peak.from, peak.to
+      if fhr == thr then
+        return false
+      end
+      if fhr < thr then
+        return h >= fhr and h < thr
+      end
+      return h >= fhr or h < thr
+    end
+
+    local function effective_max_requests(rule, peak_cfg)
+      if peak_cfg and peak_cfg.enabled and rule.peakMaxRequests and rule.offPeakMaxRequests then
+        if is_peak_hour(peak_cfg) then
+          return rule.peakMaxRequests
+        end
+        return rule.offPeakMaxRequests
+      end
+      return rule.maxRequests
+    end
+
+    local function effective_max_bytes(rule, peak_cfg)
+      if peak_cfg and peak_cfg.enabled and rule.peakMaxBytes and rule.offPeakMaxBytes then
+        if is_peak_hour(peak_cfg) then
+          return rule.peakMaxBytes
+        end
+        return rule.offPeakMaxBytes
+      end
+      return rule.maxBytes
+    end
+
+    local uri = ngx.var.request_uri or "/"
+    local rule = common.pick_rule(uri, limits.rules)
+
+    if rule then
+      local max_req = effective_max_requests(rule, limits.peakHours)
+      if max_req then
+        local dict = ngx.shared.gateway_rl
+        local ip = common.client_ip()
+        local period = rule.windowSeconds
+        local bucket = math.floor(ngx.time() / period) * period
+        local key = table.concat({"rl", "v1", ip, common.ep_token(rule.pathPrefix .. (rule.pathSuffix or "")), tostring(bucket)}, ":")
+        local n, err = dict:incr(key, 1, 0, period)
+        if not n then
+          ngx.log(ngx.WARN, "gateway_rl incr failed, allowing request: ", err or "unknown")
+        elseif n > max_req then
+          ngx.status = 429
+          ngx.header["Content-Type"] = "text/plain; charset=utf-8"
+          ngx.header["Retry-After"] = tostring(period)
+          local body = ngx.shared.rate_misc:get("e429") or "Too Many Requests"
+          ngx.say(body)
+          return ngx.exit(429)
+        end
+      end
+    end
+
+    local dlr = common.pick_rule(uri, dlc.rules)
+    if dlr then
+      local dl_max = effective_max_bytes(dlr, limits.peakHours)
+      if dl_max then
+        local ip = common.client_ip()
+        local period = dlr.windowSeconds
+        local bucket = math.floor(ngx.time() / period) * period
+        ngx.ctx.dl_key = table.concat({"dl", "v1", ip, common.ep_token(dlr.pathPrefix .. (dlr.pathSuffix or "")), tostring(bucket)}, ":")
+        ngx.ctx.dl_period = dlr.windowSeconds
+        ngx.ctx.dl_max = dl_max
+      end
+    end
+
+    local cp = ngx.var.curator_path_prefix or ""
+    if #cp > 0 and string.sub(uri, 1, #cp) == cp then
+      ngx.var.kramerius_upstream = ngx.var.backend_curator
+    else
+      ngx.var.kramerius_upstream = ngx.var.backend_public
+    end
+  header_download_limit.lua: |
+    if not ngx.ctx.dl_key then return end
+
+    local cl = ngx.var.upstream_http_content_length
+    if not cl or cl == "" or cl == "-" then return end
+
+    local ncl = tonumber(cl)
+    if not ncl or ncl <= 0 or not ngx.ctx.dl_max then return end
+
+    local dl = ngx.shared.gateway_dl
+    local cur = dl:get(ngx.ctx.dl_key)
+    local used = tonumber(cur) or 0
+    if used + ncl > ngx.ctx.dl_max then
+      ngx.ctx.dl_429 = true
+      ngx.status = ngx.HTTP_TOO_MANY_REQUESTS
+      ngx.header["Content-Type"] = "text/plain; charset=utf-8"
+      ngx.header["Retry-After"] = tostring(ngx.ctx.dl_period or 60)
+      ngx.header["Content-Length"] = nil
+    end
+  body_download_429.lua: |
+    if ngx.ctx.dl_quota_abort then
+      ngx.arg[1] = nil
+      ngx.arg[2] = false
+      return
+    end
+    if ngx.ctx.dl_429 then
+      ngx.ctx.dl_quota_abort = true
+      ngx.arg[1] = ngx.shared.rate_misc:get("e429dl") or "Download quota exceeded for this period. Try again later."
+      ngx.arg[2] = true
+      ngx.ctx.dl_429 = nil
+    end
+  log_download_bytes.lua: |
+    if not ngx.ctx.dl_key then return end
+
+    local st = tonumber(ngx.var.status) or 0
+    if st ~= 200 and st ~= 206 then return end
+
+    local bytes = tonumber(ngx.var.body_bytes_sent) or 0
+    if bytes <= 0 then return end
+
+    local dl = ngx.shared.gateway_dl
+    local period = ngx.ctx.dl_period
+    local newv, err = dl:incr(ngx.ctx.dl_key, bytes, 0, period)
+    if not newv then
+      ngx.log(ngx.WARN, "gateway_dl incr failed: ", err or "unknown")
+    end
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gateway-openresty-nginx
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "kramerius.labels" . | nindent 4 }}
+    app.kubernetes.io/name: gateway
+    app.kubernetes.io/component: gateway
+data:
+  nginx.conf: |
+    worker_processes auto;
+    error_log /dev/stderr info;
+    pid /tmp/nginx.pid;
+
+    events {
+        worker_connections 1024;
+    }
+
+    http {
+        include       /usr/local/openresty/nginx/conf/mime.types;
+        default_type  application/octet-stream;
+        sendfile        on;
+        keepalive_timeout  65;
+        client_max_body_size {{ .Values.gateway.clientMaxBodySize }};
+
+        lua_package_path "/etc/nginx/lua/?.lua;;";
+        lua_socket_log_errors off;
+        resolver {{ .Values.gateway.resolver }};
+
+        lua_shared_dict rate_misc {{ .Values.gateway.luaSharedDict.rateMisc }};
+        lua_shared_dict gateway_rl {{ .Values.gateway.luaSharedDict.rateLimit }};
+        lua_shared_dict gateway_dl {{ .Values.gateway.luaSharedDict.downloadQuota }};
+
+        init_by_lua_block {
+            local function load_err_body(path, dict_key)
+                local f = io.open(path)
+                if f then
+                    local data = f:read("*a")
+                    f:close()
+                    if data and #data > 0 then
+                        ngx.shared.rate_misc:set(dict_key, data, 0)
+                    end
+                end
+            end
+            load_err_body("/etc/nginx/errors/429.body", "e429")
+            load_err_body("/etc/nginx/errors/429.download.body", "e429dl")
+        }
+
+        log_format json_log escape=json
+            '{'
+            '"remote_addr":"$remote_addr",'
+            '"time_local":"$time_local",'
+            '"request_method":"$request_method",'
+            '"request_uri":"$request_uri",'
+            '"status":$status,'
+            '"body_bytes_sent":$body_bytes_sent,'
+            '"http_referer":"$http_referer",'
+            '"http_user_agent":"$http_user_agent",'
+            '"request_time":$request_time'
+            '}';
+
+        access_log /dev/stdout json_log;
+        {{- if .Values.elk.enabled }}
+        access_log /var/log/gateway/access.log json_log;
+        {{- end }}
+
+        map $http_x_forwarded_proto $forward_proto {
+            ""      $scheme;
+            default $http_x_forwarded_proto;
+        }
+
+        server {
+            listen 80;
+            {{- range .Values.gateway.trustedProxyCidrs }}
+            set_real_ip_from {{ . }};
+            {{- end }}
+            real_ip_header X-Forwarded-For;
+            real_ip_recursive on;
+
+            set $curator_path_prefix {{ .Values.gateway.curatorPathPrefix | quote }};
+            set $backend_public "http://kramerius-public.{{ .Values.namespace }}.svc.cluster.local:80";
+            set $backend_curator "http://kramerius-curator.{{ .Values.namespace }}.svc.cluster.local:80";
+            set $kramerius_upstream "";
+
+            access_by_lua_file /etc/nginx/lua/access_ratelimit.lua;
+            header_filter_by_lua_file /etc/nginx/lua/header_download_limit.lua;
+            body_filter_by_lua_file /etc/nginx/lua/body_download_429.lua;
+            log_by_lua_file /etc/nginx/lua/log_download_bytes.lua;
+
+            location / {
+                proxy_http_version 1.1;
+                proxy_set_header Connection "";
+                proxy_set_header Host $host;
+                proxy_set_header X-Real-IP $remote_addr;
+                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto $forward_proto;
+                proxy_connect_timeout {{ .Values.gateway.proxy.connectTimeout }};
+                proxy_send_timeout {{ .Values.gateway.proxy.sendTimeout }};
+                proxy_read_timeout {{ .Values.gateway.proxy.readTimeout }};
+                proxy_pass $kramerius_upstream;
+            }
+        }
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gateway-openresty
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "kramerius.labels" . | nindent 4 }}
+    app.kubernetes.io/name: gateway
+    app.kubernetes.io/component: gateway
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: gateway
+      app.kubernetes.io/component: gateway
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: gateway
+        app.kubernetes.io/component: gateway
+      annotations:
+        checksum/gateway-openresty: {{ include "kramerius.checksum.gatewayOpenrestyPod" . | quote }}
+    spec:
+      {{- include "kramerius.imagePullSecrets" . | nindent 6 }}
+      containers:
+        - name: openresty
+          image: {{ .Values.gateway.image.repository }}:{{ .Values.gateway.image.tag }}
+          imagePullPolicy: {{ .Values.gateway.image.pullPolicy | default "IfNotPresent" }}
+          env:
+            - name: TZ
+              value: {{ .Values.timezone | quote }}
+          ports:
+            - name: http
+              containerPort: 80
+          volumeMounts:
+            - name: nginx-conf
+              mountPath: /usr/local/openresty/nginx/conf/nginx.conf
+              subPath: nginx.conf
+            - name: lua
+              mountPath: /etc/nginx/lua
+            - name: errors
+              mountPath: /etc/nginx/errors
+            {{- if .Values.elk.enabled }}
+            - name: gateway-access-logs
+              mountPath: /var/log/gateway
+            {{- end }}
+          resources:
+            {{- toYaml .Values.gateway.resources | nindent 12 }}
+      volumes:
+        - name: nginx-conf
+          configMap:
+            name: gateway-openresty-nginx
+        - name: lua
+          configMap:
+            name: gateway-openresty-lua
+        - name: errors
+          configMap:
+            name: gateway-openresty-errors
+        {{- if .Values.elk.enabled }}
+        - name: gateway-access-logs
+          persistentVolumeClaim:
+            claimName: gateway-access-logs
+        {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gateway-openresty
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "kramerius.labels" . | nindent 4 }}
+    app.kubernetes.io/name: gateway
+    app.kubernetes.io/component: gateway
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: gateway
+    app.kubernetes.io/component: gateway
+  ports:
+    - name: http
+      port: 80
+      targetPort: http

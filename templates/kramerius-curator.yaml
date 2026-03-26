@@ -1,0 +1,173 @@
+{{/* Kramerius Curator - single read-write instance */}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kramerius-curator-config
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "kramerius.labels" . | nindent 4 }}
+data:
+  configuration.properties: |
+    {{- include "kramerius.configurationProperties.merged" (dict "root" . "extra" .Values.krameriusCurator.config.configurationPropertiesExtra "includeKrameriusJdbc" true "includeProcessManagerHost" true) | nindent 4 }}
+  {{- if .Values.krameriusCurator.config.serverXml }}
+  server.xml: |
+    {{- .Values.krameriusCurator.config.serverXml | nindent 4 }}
+  {{- end }}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: kramerius-curator
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "kramerius.labels" . | nindent 4 }}
+    app.kubernetes.io/name: kramerius-curator
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: kramerius-curator
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "kramerius.labels" . | nindent 4 }}
+    app.kubernetes.io/name: kramerius-curator
+    app.kubernetes.io/component: kramerius-curator
+spec:
+  replicas: {{ .Values.krameriusCurator.replicas }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: kramerius-curator
+      app.kubernetes.io/component: kramerius-curator
+  serviceName: kramerius-curator
+  podManagementPolicy: OrderedReady
+  updateStrategy:
+    type: RollingUpdate
+  revisionHistoryLimit: 2
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: kramerius-curator
+        app.kubernetes.io/component: kramerius-curator
+      annotations:
+        checksum/kramerius-values: {{ include "kramerius.checksum.krameriusCuratorPod" . | quote }}
+    spec:
+      serviceAccountName: kramerius-curator
+      {{- include "kramerius.imagePullSecrets" . | nindent 6 }}
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  app.kubernetes.io/name: kramerius-curator
+              topologyKey: "kubernetes.io/hostname"
+      securityContext:
+        runAsUser: 0
+        runAsGroup: 0
+      containers:
+        - name: kramerius-curator
+          image: {{ .Values.krameriusCurator.image.repository }}:{{ .Values.krameriusCurator.image.tag }}
+          imagePullPolicy: {{ .Values.krameriusCurator.image.pullPolicy | default "Always" }}
+          ports:
+            - containerPort: 8080
+              name: tomcat
+          envFrom:
+            - configMapRef:
+                name: timezone-config
+          env:
+{{- include "kramerius.tomcatLogsPodNameEnv" . | nindent 12 }}
+            {{- range $k, $v := .Values.krameriusCurator.env }}
+            {{- if ne $k "CATALINA_OPTS" }}
+            - name: {{ $k }}
+              value: {{ $v | quote }}
+            {{- end }}
+            {{- end }}
+            {{- if not (hasKey .Values.krameriusCurator.env "HAZELCAST_SERVER_ADDRESSES") }}
+            - name: HAZELCAST_SERVER_ADDRESSES
+              value: {{ include "kramerius.hazelcastServerAddresses" . | quote }}
+            {{- end }}
+            {{- if not (hasKey .Values.krameriusCurator.env "PROCESS_MANAGER_URL") }}
+            - name: PROCESS_MANAGER_URL
+              value: {{ include "kramerius.processManagerUrl" . | quote }}
+            {{- end }}
+            - name: CATALINA_OPTS
+              value: {{ include "kramerius.mergeCatalinaOpts" (dict "root" . "base" (index .Values.krameriusCurator.env "CATALINA_OPTS" | default "") "componentExtra" .Values.krameriusCurator.javaagentExtraCatalinaOpts) | quote }}
+          volumeMounts:
+{{- include "kramerius.javaagentVolumeMounts" (dict "root" .) | nindent 12 }}
+            - mountPath: /root/.kramerius4
+              name: kramerius-curator-config-dir
+            - mountPath: /root/.kramerius4/configuration.properties
+              name: kramerius-curator-config
+              subPath: configuration.properties
+              readOnly: true
+            - mountPath: /usr/local/tomcat/conf/logging.properties
+              name: kramerius-tomcat-logging
+              subPath: logging.properties
+              readOnly: true
+            {{- if .Values.krameriusCurator.config.serverXml }}
+            - mountPath: /usr/local/tomcat/conf/server.xml
+              name: kramerius-curator-config
+              subPath: server.xml
+              readOnly: true
+            {{- end }}
+            - mountPath: /root/.kramerius4/keycloak.json
+              name: kramerius-keycloak
+              subPath: keycloak.json
+              readOnly: true
+            - mountPath: /usr/local/tomcat/logs
+              name: kramerius-curator-tomcat-logs
+              readOnly: false
+            - mountPath: /data/akubra/objectStore
+              name: akubra-objectstore
+              readOnly: false
+            - mountPath: /data/akubra/datastreamStore
+              name: akubra-datastream
+              readOnly: false
+            - mountPath: /data/import
+              name: import-storage
+              readOnly: true
+          {{- with .Values.krameriusCurator.livenessProbe }}
+          livenessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.krameriusCurator.readinessProbe }}
+          readinessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          resources:
+            {{- toYaml .Values.krameriusCurator.resources | nindent 12 }}
+      volumes:
+        - name: kramerius-curator-config-dir
+          emptyDir: {}
+        - name: kramerius-curator-config
+          configMap:
+            name: kramerius-curator-config
+        - name: kramerius-tomcat-logging
+          configMap:
+            name: kramerius-tomcat-logging
+        - name: kramerius-keycloak
+          configMap:
+            name: kramerius-keycloak
+{{ include "kramerius.javaagentVolumes" (dict "root" .) | nindent 8 }}
+{{- include "kramerius.sharedStorageVolume" (dict "root" . "volumeName" "akubra-objectstore" "storageKey" "akubra-object-store") | nindent 8 }}
+{{- include "kramerius.sharedStorageVolume" (dict "root" . "volumeName" "akubra-datastream" "storageKey" "akubra-datastream-store") | nindent 8 }}
+{{- include "kramerius.sharedStorageVolume" (dict "root" . "volumeName" "import-storage" "storageKey" "import") | nindent 8 }}
+{{- include "kramerius.tomcatLogsNfsVolume" (dict "root" . "volumeName" "kramerius-curator-tomcat-logs" "tomcatLogs" .Values.krameriusCurator.tomcatLogs) | nindent 8 }}
+{{- include "kramerius.tomcatLogsVolumeClaimTemplates" (dict "root" . "volumeName" "kramerius-curator-tomcat-logs" "tomcatLogs" .Values.krameriusCurator.tomcatLogs) | nindent 2 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kramerius-curator
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "kramerius.labels" . | nindent 4 }}
+    app.kubernetes.io/name: kramerius-curator
+    app.kubernetes.io/component: kramerius-curator
+spec:
+  selector:
+    app.kubernetes.io/name: kramerius-curator
+    app.kubernetes.io/component: kramerius-curator
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8080

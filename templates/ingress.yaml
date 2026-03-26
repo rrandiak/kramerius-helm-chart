@@ -1,0 +1,90 @@
+{{- if and .Values.ingress.enabled .Values.ingress.host }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: kramerius-gateway
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "kramerius.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ingress-gateway
+  annotations:
+    {{- toYaml (.Values.ingress.annotations | default dict) | nindent 4 }}
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  tls:
+    - hosts:
+        - {{ .Values.ingress.host | quote }}
+      secretName: {{ .Values.ingress.tls.secretName }}
+  rules:
+    - host: {{ .Values.ingress.host | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: gateway-openresty
+                port:
+                  name: http
+{{- end }}
+{{- if and .Values.ingress.enabled .Values.ingress.admin.host .Values.adminClient.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: kramerius-admin
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "kramerius.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ingress-admin
+  annotations:
+{{- include "kramerius.ingressAnnotationsWithOptionalOAuth" (dict "base" (.Values.ingress.annotations | default dict) "oauthProtected" (.Values.ingress.admin.oauthProtected | default false) "authUrl" .Values.ingress.oauth.authUrl "authSignin" .Values.ingress.oauth.authSignin) | nindent 4 }}
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  tls:
+    - hosts:
+        - {{ .Values.ingress.admin.host | quote }}
+      secretName: {{ .Values.ingress.admin.tls.secretName }}
+  rules:
+    - host: {{ .Values.ingress.admin.host | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: admin-client
+                port:
+                  name: http
+{{- end }}
+{{- if and .Values.ingress.enabled .Values.ingress.processManager.host }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: kramerius-process-manager
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "kramerius.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ingress-process-manager
+  annotations:
+{{- include "kramerius.ingressAnnotationsWithOptionalOAuth" (dict "base" (.Values.ingress.annotations | default dict) "oauthProtected" (.Values.ingress.processManager.oauthProtected | default false) "authUrl" .Values.ingress.oauth.authUrl "authSignin" .Values.ingress.oauth.authSignin) | nindent 4 }}
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  tls:
+    - hosts:
+        - {{ .Values.ingress.processManager.host | quote }}
+      secretName: {{ .Values.ingress.processManager.tls.secretName }}
+  rules:
+    - host: {{ .Values.ingress.processManager.host | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: process-manager
+                port:
+                  name: http
+{{- end }}

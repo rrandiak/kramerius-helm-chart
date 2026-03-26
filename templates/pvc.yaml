@@ -1,11 +1,20 @@
-{{- if .Values.persistentVolumeClaims }}
-{{- range .Values.persistentVolumeClaims }}
+{{- range $key := list "javaagents" "import" "akubra-object-store" "akubra-datastream-store" "imageserver" "audioserver" "pdfserver" }}
+{{- $st := index $.Values.storages $key }}
+{{- if and (eq $st.type "pvc") (not $st.existingClaim) }}
+---
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-{{ toYaml .metadata | indent 2 }}
+  name: {{ include "kramerius.storagePvcName" (dict "root" $ "storageKey" $key) }}
+  namespace: {{ $.Values.namespace }}
+  labels:
+    {{- include "kramerius.labels" $ | nindent 4 }}
 spec:
-{{ toYaml .spec | indent 2 }}
----
+  accessModes:
+    - ReadWriteMany
+  storageClassName: {{ include "kramerius.storagePvcStorageClass" (dict "root" $ "storageKey" $key) | quote }}
+  resources:
+    requests:
+      storage: {{ $st.size }}
 {{- end }}
 {{- end }}

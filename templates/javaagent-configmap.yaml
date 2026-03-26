@@ -1,0 +1,12 @@
+{{- if and .Values.javaagent.enabled .Values.javaagent.configFile.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kramerius-javaagent-config
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "kramerius.labels" . | nindent 4 }}
+data:
+  {{ .Values.javaagent.configFile.key }}: |
+    {{- .Values.javaagent.configFile.content | nindent 4 }}
+{{- end }}
