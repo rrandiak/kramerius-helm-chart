@@ -13,7 +13,7 @@ OpenResty Gateway
                                         ├── Hazelcast :5701 (distributed locks)
                                         ├── Keycloak (OIDC token validation)
                                         ├── Akubra stores (NFS/PVC, read-write)
-                                        ├── Import storage (NFS/PVC, read-only)
+                                        ├── Import storages (NFS/PVC, read-only)
                                         └── Process Manager (task submission)
 ```
 
@@ -34,17 +34,17 @@ OpenResty Gateway
 | `/usr/local/tomcat/conf/logging.properties` | `kramerius-tomcat-logging` ConfigMap | RO | Tomcat log config |
 | `/data/akubra/objectStore` | `akubra-object-store` PVC/NFS | **ReadWriteMany** | FOXML object storage |
 | `/data/akubra/datastreamStore` | `akubra-datastream-store` PVC/NFS | **ReadWriteMany** | External datastream storage (ALTO, TEXT_OCR, etc.) |
-| `/data/import` | `import` PVC/NFS | **ReadOnlyMany** | Import staging area (inspect only — workers write here) |
+| per-entry `mountPath` | `imports[]` PVC/NFS | **ReadOnlyMany** | Import staging areas (inspect only — workers write here). Multiple import storages supported. |
 | `/root/.kramerius4/javaagent.jar` | `javaagents` PVC/NFS | RO | Java agent JAR (optional; `javaagent.enabled`) |
 | `/usr/local/tomcat/logs` | `tomcat-logs` PVC | RW | Tomcat application logs — each pod gets its own PVC via `volumeClaimTemplates` |
 
-The curator mounts both Akubra stores **read-write** — it is the authoritative editor for FOXML objects and their datastreams. The import volume is mounted **read-only**; the curator can inspect staged packages but actual processing and cleanup is done by workers.
+The curator mounts both Akubra stores **read-write** — it is the authoritative editor for FOXML objects and their datastreams. Import volumes are mounted **read-only**; the curator can inspect staged packages but actual processing and cleanup is done by workers.
 
 ## Configuration
 
 ### configuration.properties
 
-The curator uses the same shared roots as public (`akubraConfig`, `solrConfig`, `auth.keycloak`), plus a **Kramerius** `## Postgresql` JDBC section built from `cnpg.kramerius`, and a **Process Manager** section with `processManagerHost` set to the in-cluster service URL (`http://process-manager.<namespace>.svc.cluster.local:8080`). Finally it appends **`krameriusCurator.config.configurationPropertiesExtra`** (curator-only keys like `import.directory` and optional JDBC pool tuning keys). Both `processManagerHost` in `configuration.properties` and the `PROCESS_MANAGER_URL` env var are set automatically by the chart.
+The curator uses the same shared roots as public (`akubraConfig`, `solrConfig`, `auth.keycloak`), plus a **Kramerius** `## Postgresql` JDBC section built from `cnpg.kramerius`, a **Process Manager** section with `processManagerHost` set to the in-cluster service URL (`http://process-manager.<namespace>.svc.cluster.local:8080`), and an **Import** section with `import.directory` auto-generated as a comma-joined list of all `storages.imports[].mountPath` values. Finally it appends **`krameriusCurator.config.configurationPropertiesExtra`** (curator-only keys like optional JDBC pool tuning keys). Both `processManagerHost` in `configuration.properties` and the `PROCESS_MANAGER_URL` env var are set automatically by the chart.
 
 ### Environment Variables
 
@@ -101,11 +101,11 @@ JVM heap: `-Xms4g -Xmx8g` (tune in `krameriusCurator.env.CATALINA_OPTS`). The 11
 | **Hazelcast** | TCP :5701 | Distributed locking |
 | **Keycloak** (external) | HTTPS / OIDC | Token validation (required for all admin ops) |
 | **Akubra stores** | POSIX filesystem RW | Direct FOXML object and datastream editing |
-| **Import storage** | POSIX filesystem RO | Inspecting staged import packages |
+| **Import storages** | POSIX filesystem RO | Inspecting staged import packages (one or more volumes) |
 | **Process Manager** | HTTP REST | Task submission |
 
 ## Notes
 
 - The gateway routes to this service only for paths matching `curatorPathPrefix`.
 - Both the curator and workers hold read-write mounts on the Akubra stores. Concurrent access is coordinated through Hazelcast locks.
-- The curator never writes to the import volume. Only workers move or delete staged files there.
+- The curator never writes to import volumes. Only workers move or delete staged files there.

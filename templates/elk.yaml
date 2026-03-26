@@ -401,6 +401,9 @@ data:
     {
       "index_patterns": ["k7-access-logs-*"],
       "template": {
+        "settings": {
+          "index.lifecycle.name": "k7-access-logs-retention"
+        },
         "mappings": {
           "properties": {
             "request": {
@@ -481,6 +484,43 @@ data:
 
     PIPELINE_NAME="k7-access-logs"
     PIPELINE_FILE="/setup/k7-access-logs-pipeline.json"
+
+    ILM_POLICY_NAME="k7-access-logs-retention"
+    RETENTION_DAYS="{{ .Values.elk.retentionDays }}"
+
+    # --- Setup ILM policy ---
+    i=0
+    while [ $i -lt $MAX_RETRIES ]; do
+        echo "Attempt $((i+1)) to create ILM policy..."
+        if curl -s -X PUT "$ES_URL/_ilm/policy/$ILM_POLICY_NAME" \
+                -H 'Content-Type: application/json' \
+                -d "{
+                  \"policy\": {
+                    \"phases\": {
+                      \"hot\": {
+                        \"actions\": {}
+                      },
+                      \"delete\": {
+                        \"min_age\": \"${RETENTION_DAYS}d\",
+                        \"actions\": {
+                          \"delete\": {}
+                        }
+                      }
+                    }
+                  }
+                }"; then
+            echo "ILM policy created successfully!"
+            break
+        fi
+        echo "Failed, retrying in $SLEEP seconds..."
+        i=$((i+1))
+        sleep $SLEEP
+    done
+
+    if [ $i -eq $MAX_RETRIES ]; then
+        echo "Failed to create ILM policy after $MAX_RETRIES attempts."
+        exit 1
+    fi
 
     # --- Setup index template ---
     i=0

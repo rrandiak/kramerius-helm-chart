@@ -30,7 +30,7 @@ The Process Manager is also exposed directly via ingress (optional, with optiona
 | `/usr/local/tomcat/logs` | `tomcat-logs` PVC | RW | Tomcat application logs — each pod gets its own PVC via `volumeClaimTemplates` |
 | `/root/.kramerius4/javaagent.jar` | `javaagents` PVC/NFS | RO | Java agent JAR (optional; `javaagent.enabled`) |
 
-The Process Manager does **not** mount the Akubra or import storage — task execution happens in the worker pods.
+The Process Manager does **not** mount the Akubra or import storages — task execution happens in the worker pods.
 
 ## Configuration
 

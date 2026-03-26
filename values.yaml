@@ -32,15 +32,22 @@ storages:
     existingClaim: ""
     storageClass: nfs
     size: 1Gi
+    # NFS mount options (e.g. ["hard", "nfsvers=4.1"]). Only used when type: nfs.
+    mountOptions: []
 
-  # Mounted only on kramerius-curator and workers (not public).
-  import:
-    type: nfs
-    nfsServer: ""
-    nfsPath: /data/kramerius/import
-    existingClaim: ""
-    storageClass: nfs
-    size: 50Gi
+  # Import storages — each entry is mounted at its mountPath on curator and workers.
+  # Multiple entries allow separate NFS shares or PVCs per import source.
+  # The import.directory configuration property is auto-generated as a comma-joined list of all mountPaths.
+  #   - name: ndk
+  #     mountPath: /data/import/ndk
+  #     type: nfs
+  #     nfsServer: ""
+  #     nfsPath: /data/kramerius/import/ndk
+  #     existingClaim: ""
+  #     storageClass: nfs
+  #     size: 50Gi
+  #     mountOptions: []
+  imports: []
 
   akubra-object-store:
     type: nfs
@@ -49,6 +56,7 @@ storages:
     existingClaim: ""
     storageClass: nfs
     size: 50Gi
+    mountOptions: []
 
   akubra-datastream-store:
     type: nfs
@@ -57,6 +65,7 @@ storages:
     existingClaim: ""
     storageClass: nfs
     size: 50Gi
+    mountOptions: []
 
   # Media server volumes — mounted read-write on workers only.
   # Typically NFS so media server processes running outside the cluster can mount the same share.
@@ -67,6 +76,7 @@ storages:
     existingClaim: ""
     storageClass: nfs
     size: 50Gi
+    mountOptions: []
 
   audioserver:
     type: nfs
@@ -75,6 +85,7 @@ storages:
     existingClaim: ""
     storageClass: nfs
     size: 10Gi
+    mountOptions: []
 
   pdfserver:
     type: nfs
@@ -83,6 +94,7 @@ storages:
     existingClaim: ""
     storageClass: nfs
     size: 10Gi
+    mountOptions: []
 
 # Keycloak adapter: drives keycloak.json (public/curator) and Keycloak lines in configuration.properties.
 auth:
@@ -497,6 +509,9 @@ ingress:
 # ---------------------------------------------------------------------------
 elk:
   enabled: false
+
+  # Number of days to retain access-log indices before automatic deletion.
+  retentionDays: 90
 
   elasticsearch:
     image:

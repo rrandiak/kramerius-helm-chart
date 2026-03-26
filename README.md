@@ -13,7 +13,7 @@ This chart deploys **Kramerius 7**, a digital library platform used for managing
 | [Workers](kramerius/docs/workers.md) | StatefulSet (per group) | Asynchronous task execution (import, indexing, etc.) |
 | [Hazelcast](kramerius/docs/hazelcast.md) | StatefulSet | Distributed lock server used by Kramerius and workers |
 | [CNPG (PostgreSQL)](kramerius/docs/cnpg.md) | CNPG Cluster | Two managed PostgreSQL databases |
-| [Data Stores](kramerius/docs/data-stores.md) | PVC / NFS | Shared FOXML object storage (Akubra), import store and media stores |
+| [Data Stores](kramerius/docs/data-stores.md) | PVC / NFS | Shared FOXML object storage (Akubra), import stores and media stores |
 | [Admin Client](kramerius/docs/admin-client.md) | Deployment | Static web UI for administration |
 
 ## Architecture Overview
@@ -32,7 +32,7 @@ flowchart TD
     KrameDB[("kramerius-db\nCNPG cluster")]
     ProcessDB[("process-db\nCNPG cluster")]
     Akubra[("Akubra\nobjectStore · datastreamStore")]
-    Import[("import")]
+    Import[("imports\n(one or more)")]
     Media[("imageserver\naudioserver · pdfserver")]
 
     Internet --> Ingress
@@ -64,11 +64,11 @@ flowchart TD
    - `/search/api/admin/*` → **kramerius-curator**
    - everything else → **kramerius-public**
 3. **Kramerius Public/Curator & Workers → Hazelcast** — Acquire distributed locks via Hazelcast before writing or indexing to avoid race conditions.
-4. **Kramerius Curator → Import storage** — Curator reads the list of import packages from shared filesystem for presenting them to administrators.
+4. **Kramerius Curator → Import storages** — Curator reads the list of import packages from shared filesystem(s) for presenting them to administrators.
 5. **Kramerius Curator / Public → Process Manager** — Long-running operations (re-indexing, imports, licenses change) are submitted as tasks to the Process Manager REST API. Both the curator and the public instance can submit tasks.
 6. **Process Manager → Workers** — The manager dispatches task execution to registered worker pods. Workers register themselves with a stable in-cluster DNS name (`POD_NAME.worker-NAME.NAMESPACE.svc.cluster.local`).
 7. **Workers → Akubra storage** — Workers read and write FOXML objects and datastreams directly on the shared filesystem.
-8. **Workers → Import storage** — Workers read imports from shared filesystem and remove import packages after successful imports.
+8. **Workers → Import storages** — Workers read imports from shared filesystem(s) and remove import packages after successful imports.
 9. **Workers → Media storage** — Workers write media from import packages into the shared filesystem.
 10. **Kramerius Public/Curator & Process Manager → CNPG PostgreSQL** — Application state (RBAC, user data, task queues) is persisted in the two managed PostgreSQL clusters.
 11. **Kramerius Public/Curator → Keycloak** — OIDC tokens issued by an external Keycloak instance are validated by the Kramerius Keycloak adapter on every authenticated request.
@@ -117,7 +117,8 @@ Key values to configure before deploying:
 | `namespace` | Kubernetes namespace |
 | `storages.defaultNfsServer` | Fallback NFS server for all volumes with `type: nfs` and no explicit `nfsServer` |
 | `defaultStorageClass` | Default StorageClass used for PVC-backed volumes when `storageClass` is empty |
-| `storages.*` | PVC / NFS configuration for data volumes (Akubra stores, import, media servers, javaagents) |
+| `storages.*` | PVC / NFS configuration for data volumes (Akubra stores, media servers, javaagents) |
+| `storages.imports[]` | List of import storages — each with `name`, `mountPath`, and PVC/NFS settings. `import.directory` is auto-generated. |
 | `krameriusPublic.tomcatLogs` / `krameriusCurator.tomcatLogs` / `processManager.tomcatLogs` / `workerTomcatLogs` | Tomcat logs PVC/NFS per component (each StatefulSet creates its own claims) |
 | `cnpg.processManager.password` / `cnpg.kramerius.password` | DB bootstrap credentials (used as `jdbcUserPass` in `configuration.properties` and to create the bootstrap Secret) |
 | `akubraConfig` / `solrConfig` | Shared `configuration.properties` roots: Akubra patterns + Solr endpoints. The chart adds fixed Akubra mount paths, Keycloak (`auth.keycloak`), and the lock-server address. |

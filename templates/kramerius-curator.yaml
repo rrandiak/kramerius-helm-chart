@@ -122,9 +122,7 @@ spec:
             - mountPath: /data/akubra/datastreamStore
               name: akubra-datastream
               readOnly: false
-            - mountPath: /data/import
-              name: import-storage
-              readOnly: true
+{{- include "kramerius.importStorageVolumeMounts" (dict "root" . "readOnly" true) | nindent 12 }}
           {{- with .Values.krameriusCurator.livenessProbe }}
           livenessProbe:
             {{- toYaml . | nindent 12 }}
@@ -150,7 +148,7 @@ spec:
 {{ include "kramerius.javaagentVolumes" (dict "root" .) | nindent 8 }}
 {{- include "kramerius.sharedStorageVolume" (dict "root" . "volumeName" "akubra-objectstore" "storageKey" "akubra-object-store") | nindent 8 }}
 {{- include "kramerius.sharedStorageVolume" (dict "root" . "volumeName" "akubra-datastream" "storageKey" "akubra-datastream-store") | nindent 8 }}
-{{- include "kramerius.sharedStorageVolume" (dict "root" . "volumeName" "import-storage" "storageKey" "import") | nindent 8 }}
+{{- include "kramerius.importStorageVolumes" (dict "root" .) | nindent 8 }}
 {{- include "kramerius.tomcatLogsNfsVolume" (dict "root" . "volumeName" "kramerius-curator-tomcat-logs" "tomcatLogs" .Values.krameriusCurator.tomcatLogs) | nindent 8 }}
 {{- include "kramerius.tomcatLogsVolumeClaimTemplates" (dict "root" . "volumeName" "kramerius-curator-tomcat-logs" "tomcatLogs" .Values.krameriusCurator.tomcatLogs) | nindent 2 }}
 ---

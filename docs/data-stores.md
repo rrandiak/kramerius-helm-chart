@@ -12,7 +12,7 @@ Most data volumes are declared under `storages` in `values.yaml` as **`pvc`** (a
 |---|---|---|---|
 | `akubra-object-store` | `/data/akubra/objectStore` | Public (RO), Curator (RW), Workers (RW) | ReadWriteMany / ReadOnlyMany |
 | `akubra-datastream-store` | `/data/akubra/datastreamStore` | Public (RO), Curator (RW), Workers (RW) | ReadWriteMany / ReadOnlyMany |
-| `import` | `/data/import` | Curator (RO), Workers (RW) | ReadWriteMany |
+| `imports[]` | per-entry `mountPath` | Curator (RO), Workers (RW) | ReadWriteMany |
 | `imageserver` | `/data/imageserver` | Workers (RW) | ReadWriteMany |
 | `audioserver` | `/data/audioserver` | Workers (RW) | ReadWriteMany |
 | `pdfserver` | `/data/pdfserver` | Workers (RW) | ReadWriteMany |
@@ -41,13 +41,30 @@ Stores **external datastreams** referenced by FOXML objects — content of datas
 - **Volume name**: `akubra-datastream-store`
 - **Path inside**: `/data/akubra/datastreamStore`
 
-## Import Volume
+## Import Volumes
 
-A staging area for content being ingested into the library. Operators or automated pipelines drop source packages (FOXML archives, image sets, etc.) here. Workers read from this staging area, process the content, and write results to the Akubra stores and media server volumes. The curator mounts this volume **read-only** — it can inspect staged content but does not write or clean it up.
+Staging areas for content being ingested into the library. Operators or automated pipelines drop source packages (FOXML archives, image sets, etc.) here. Workers read from these staging areas, process the content, and write results to the Akubra stores and media server volumes. The curator mounts these volumes **read-only** — it can inspect staged content but does not write or clean it up.
+
+Multiple import storages can be configured under `storages.imports` — each entry is a separate PVC or NFS volume with its own `mountPath`. The chart auto-generates the `import.directory` configuration property as a comma-joined list of all mount paths.
 
 - **Read by**: Kramerius Curator (RO — inspect staged packages), Workers (RW — process and clean up)
-- **Volume name**: `import`
-- **Path inside**: `/data/import`
+- **Volume name**: `import-<name>` (derived from each entry's `name` field)
+- **Path inside**: per-entry `mountPath`
+
+```yaml
+storages:
+  imports:
+    - name: ndk
+      mountPath: /data/import/ndk
+      type: nfs
+      nfsPath: /data/kramerius/import/ndk
+      size: 50Gi
+    - name: foxml
+      mountPath: /data/import/foxml
+      type: nfs
+      nfsPath: /data/kramerius/import/foxml
+      size: 20Gi
+```
 
 ## Image Server Data
 
@@ -115,11 +132,13 @@ storages:
     storageClass: nfs
     size: 50Gi
 
-  import:
-    type: nfs
-    nfsPath: /data/kramerius/import
-    storageClass: nfs
-    size: 50Gi
+  imports:
+    - name: default
+      mountPath: /data/import
+      type: nfs
+      nfsPath: /data/kramerius/import
+      storageClass: nfs
+      size: 50Gi
 
   # Media server volumes — typically NFS so the media server processes
   # running outside the cluster can mount the same share.
@@ -176,7 +195,7 @@ This is the recommended mode for `imageserver`, `audioserver`, and `pdfserver` b
 |---|---|---|---|---|
 | `objectStore` | ReadOnly | ReadWrite | — | ReadWrite |
 | `datastreamStore` | ReadOnly | ReadWrite | — | ReadWrite |
-| `import` | — | **ReadOnly** | — | ReadWrite |
+| `imports[]` | — | **ReadOnly** | — | ReadWrite |
 | `imageserver` | — | — | — | ReadWrite |
 | `audioserver` | — | — | — | ReadWrite |
 | `pdfserver` | — | — | — | ReadWrite |
@@ -193,7 +212,7 @@ Multiple pods holding read-write mounts on the same NFS/PVC volume can conflict.
 |---|---|---|
 | `objectStore` | 50 Gi – several TB | Grows with every imported document |
 | `datastreamStore` | 50 Gi – several TB | Roughly proportional to objectStore |
-| `import` | 50 Gi+ | Needs headroom for the largest single batch |
+| `imports[]` | 50 Gi+ each | Needs headroom for the largest single batch |
 | `imageserver` | 50 Gi – several TB | Image tiles; size depends on resolution and collection |
 | `audioserver` | variable | Depends on audio collection size |
 | `pdfserver` | variable | Depends on PDF generation volume |

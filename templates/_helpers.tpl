@@ -245,6 +245,17 @@ Dict: root (context),
 includeKrameriusJdbc (bool),
 includeProcessManagerHost (bool),
 */}}
+{{/*
+Comma-joined list of import mount paths from storages.imports.
+*/}}
+{{- define "kramerius.importDirectories" -}}
+{{- $dirs := list }}
+{{- range .Values.storages.imports }}
+{{- $dirs = append $dirs .mountPath }}
+{{- end }}
+{{- join "," $dirs }}
+{{- end }}
+
 {{- define "kramerius.configurationProperties.baseContent" -}}
 {{- $root := .root }}
 {{- $includeKrameriusJdbc := .includeKrameriusJdbc | default false }}
@@ -260,12 +271,18 @@ includeProcessManagerHost (bool),
 {{- if $includeProcessManagerHost }}
 {{- $processManagerPart = include "kramerius.configurationProperties.section" (dict "title" "Process Manager" "map" (dict "processManagerHost" (include "kramerius.processManagerHost" $root))) | trim }}
 {{- end }}
+{{- $importDirs := include "kramerius.importDirectories" $root }}
+{{- $importPart := "" }}
+{{- if $importDirs }}
+{{- $importPart = include "kramerius.configurationProperties.section" (dict "title" "Import" "map" (dict "import.directory" $importDirs)) | trim }}
+{{- end }}
 {{- $parts := compact (list
   (include "kramerius.configurationProperties.section" (dict "title" "Akubra" "map" $akubra))
   (include "kramerius.configurationProperties.section" (dict "title" "Solr" "map" $solr))
   (include "kramerius.configurationProperties.section" (dict "title" "Keycloak" "map" $keycloak))
   $krameriusJdbcPart
   $processManagerPart
+  $importPart
 ) }}
 {{- join "\n" $parts }}
 {{- end }}
@@ -360,15 +377,39 @@ Usage: include "kramerius.sharedStorageVolume" (dict "root" $ "volumeName" "java
 {{- $volName := .volumeName }}
 {{- $key := .storageKey }}
 {{- $st := index $root.Values.storages $key }}
-{{- if and $st (eq $st.type "nfs") }}
-- name: {{ $volName }}
-  nfs:
-    server: {{ include "kramerius.storageNfsServer" (dict "root" $root "storageKey" $key) | quote }}
-    path: {{ $st.nfsPath | quote }}
-{{- else if and $st (eq $st.type "pvc") }}
+{{- if and $st (or (eq $st.type "nfs") (eq $st.type "pvc")) }}
 - name: {{ $volName }}
   persistentVolumeClaim:
     claimName: {{ include "kramerius.storagePvcName" (dict "root" $root "storageKey" $key) | quote }}
+{{- end }}
+{{- end }}
+
+{{/*
+Import storage volumes — one PVC volume per entry in storages.imports.
+Usage: include "kramerius.importStorageVolumes" (dict "root" $)
+*/}}
+{{- define "kramerius.importStorageVolumes" -}}
+{{- $root := .root }}
+{{- range $imp := $root.Values.storages.imports }}
+{{- $impName := printf "import-%s" $imp.name }}
+{{- $claimName := $imp.existingClaim | default (printf "%s-%s" (include "kramerius.fullname" $root) ($impName | trunc 63 | trimSuffix "-")) }}
+- name: {{ $impName }}
+  persistentVolumeClaim:
+    claimName: {{ $claimName | quote }}
+{{- end }}
+{{- end }}
+
+{{/*
+Import storage volume mounts — each mounted at its own mountPath.
+Usage: include "kramerius.importStorageVolumeMounts" (dict "root" $ "readOnly" true)
+*/}}
+{{- define "kramerius.importStorageVolumeMounts" -}}
+{{- $root := .root }}
+{{- $ro := .readOnly | default false }}
+{{- range $imp := $root.Values.storages.imports }}
+- mountPath: {{ $imp.mountPath }}
+  name: import-{{ $imp.name }}
+  readOnly: {{ $ro }}
 {{- end }}
 {{- end }}
 

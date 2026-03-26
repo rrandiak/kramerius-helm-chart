@@ -1,6 +1,44 @@
-{{- range $key := list "javaagents" "import" "akubra-object-store" "akubra-datastream-store" "imageserver" "audioserver" "pdfserver" }}
+{{- range $key := list "javaagents" "akubra-object-store" "akubra-datastream-store" "imageserver" "audioserver" "pdfserver" }}
 {{- $st := index $.Values.storages $key }}
-{{- if and (eq $st.type "pvc") (not $st.existingClaim) }}
+{{- if and (eq $st.type "nfs") (not $st.existingClaim) }}
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: {{ include "kramerius.storagePvcName" (dict "root" $ "storageKey" $key) }}
+  labels:
+    {{- include "kramerius.labels" $ | nindent 4 }}
+spec:
+  capacity:
+    storage: {{ $st.size }}
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: {{ include "kramerius.storagePvcStorageClass" (dict "root" $ "storageKey" $key) | quote }}
+  {{- if $st.mountOptions }}
+  mountOptions:
+    {{- toYaml $st.mountOptions | nindent 4 }}
+  {{- end }}
+  nfs:
+    server: {{ include "kramerius.storageNfsServer" (dict "root" $ "storageKey" $key) | quote }}
+    path: {{ $st.nfsPath | quote }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "kramerius.storagePvcName" (dict "root" $ "storageKey" $key) }}
+  namespace: {{ $.Values.namespace }}
+  labels:
+    {{- include "kramerius.labels" $ | nindent 4 }}
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: {{ include "kramerius.storagePvcStorageClass" (dict "root" $ "storageKey" $key) | quote }}
+  volumeName: {{ include "kramerius.storagePvcName" (dict "root" $ "storageKey" $key) | quote }}
+  resources:
+    requests:
+      storage: {{ $st.size }}
+{{- else if and (eq $st.type "pvc") (not $st.existingClaim) }}
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -16,5 +54,64 @@ spec:
   resources:
     requests:
       storage: {{ $st.size }}
+{{- end }}
+{{- end }}
+{{/* Import storages — one PV/PVC pair per entry in storages.imports */}}
+{{- range $imp := $.Values.storages.imports }}
+{{- $impName := printf "import-%s" $imp.name }}
+{{- if and (eq $imp.type "nfs") (not $imp.existingClaim) }}
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: {{ include "kramerius.fullname" $ }}-{{ $impName | trunc 63 | trimSuffix "-" }}
+  labels:
+    {{- include "kramerius.labels" $ | nindent 4 }}
+spec:
+  capacity:
+    storage: {{ $imp.size }}
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: {{ default $.Values.defaultStorageClass $imp.storageClass | quote }}
+  {{- if $imp.mountOptions }}
+  mountOptions:
+    {{- toYaml $imp.mountOptions | nindent 4 }}
+  {{- end }}
+  nfs:
+    server: {{ default $.Values.storages.defaultNfsServer $imp.nfsServer | quote }}
+    path: {{ $imp.nfsPath | quote }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "kramerius.fullname" $ }}-{{ $impName | trunc 63 | trimSuffix "-" }}
+  namespace: {{ $.Values.namespace }}
+  labels:
+    {{- include "kramerius.labels" $ | nindent 4 }}
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: {{ default $.Values.defaultStorageClass $imp.storageClass | quote }}
+  volumeName: {{ include "kramerius.fullname" $ }}-{{ $impName | trunc 63 | trimSuffix "-" }}
+  resources:
+    requests:
+      storage: {{ $imp.size }}
+{{- else if and (eq $imp.type "pvc") (not $imp.existingClaim) }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "kramerius.fullname" $ }}-{{ $impName | trunc 63 | trimSuffix "-" }}
+  namespace: {{ $.Values.namespace }}
+  labels:
+    {{- include "kramerius.labels" $ | nindent 4 }}
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: {{ default $.Values.defaultStorageClass $imp.storageClass | quote }}
+  resources:
+    requests:
+      storage: {{ $imp.size }}
 {{- end }}
 {{- end }}
