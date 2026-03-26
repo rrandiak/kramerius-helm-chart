@@ -541,3 +541,7 @@ Replicas are omitted so scaling does not force a rolling restart.
 {{- define "kramerius.checksum.hazelcastPod" -}}
 {{- mustToJson (dict "hazelcast" .Values.hazelcast "timezone" .Values.timezone) | sha256sum -}}
 {{- end }}
+
+{{- define "kramerius.kibanaInvestigatePath" -}}
+/app/dashboards#/view/4c54599c-9e2a-4dab-9461-880fe550642b
+{{- end }}

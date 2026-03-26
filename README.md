@@ -6,15 +6,15 @@ This chart deploys **Kramerius 7**, a digital library platform used for managing
 
 | Component | Kind | Purpose |
 |---|---|---|
-| [Gateway (OpenResty)](docs/gateway.md) | Deployment | Edge proxy — rate limiting, download quotas, routing |
-| [Kramerius Public](docs/kramerius-public.md) | StatefulSet | Read-only API and search, horizontally scalable |
-| [Kramerius Curator](docs/kramerius-curator.md) | StatefulSet | Read-write API for administrators, single instance |
-| [Process Manager](docs/process-manager.md) | StatefulSet | Task scheduler — distributes work to workers |
-| [Workers](docs/workers.md) | StatefulSet (per group) | Asynchronous task execution (import, indexing, etc.) |
-| [Hazelcast](docs/hazelcast.md) | StatefulSet | Distributed lock server used by Kramerius and workers |
-| [CNPG (PostgreSQL)](docs/cnpg.md) | CNPG Cluster | Two managed PostgreSQL databases |
-| [Data Stores](docs/data-stores.md) | PVC / NFS | Shared FOXML object storage (Akubra), import store and media stores |
-| [Admin Client](docs/admin-client.md) | Deployment | Static web UI for administration |
+| [Gateway (OpenResty)](kramerius/docs/gateway.md) | Deployment | Edge proxy — rate limiting, download quotas, routing |
+| [Kramerius Public](kramerius/docs/kramerius-public.md) | StatefulSet | Read-only API and search, horizontally scalable |
+| [Kramerius Curator](kramerius/docs/kramerius-curator.md) | StatefulSet | Read-write API for administrators, single instance |
+| [Process Manager](kramerius/docs/process-manager.md) | StatefulSet | Task scheduler — distributes work to workers |
+| [Workers](kramerius/docs/workers.md) | StatefulSet (per group) | Asynchronous task execution (import, indexing, etc.) |
+| [Hazelcast](kramerius/docs/hazelcast.md) | StatefulSet | Distributed lock server used by Kramerius and workers |
+| [CNPG (PostgreSQL)](kramerius/docs/cnpg.md) | CNPG Cluster | Two managed PostgreSQL databases |
+| [Data Stores](kramerius/docs/data-stores.md) | PVC / NFS | Shared FOXML object storage (Akubra), import store and media stores |
+| [Admin Client](kramerius/docs/admin-client.md) | Deployment | Static web UI for administration |
 
 ## Architecture Overview
 

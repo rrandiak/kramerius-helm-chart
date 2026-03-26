@@ -851,6 +851,16 @@ data:
     WINDOW_MINUTES="{{ .Values.elk.slackAlerts.windowMinutes }}"
     THRESHOLD_429="{{ .Values.elk.slackAlerts.threshold429 }}"
     KIBANA_URL="https://{{ .Values.ingress.kibana.host }}"
+    KIBANA_INVESTIGATE_URL="${KIBANA_URL}{{ include "kramerius.kibanaInvestigatePath" . }}"
+    EMOJI_LIST="{{ .Values.elk.slackAlerts.emoji }}"
+
+    pick_emoji() {
+      if [ -n "$EMOJI_LIST" ]; then
+        COUNT=$(echo "$EMOJI_LIST" | tr ',' '\n' | wc -l)
+        IDX=$(( $(od -An -tu4 -N4 /dev/urandom | tr -d ' ') % COUNT + 1 ))
+        echo "$EMOJI_LIST" | tr ',' '\n' | sed -n "${IDX}p" | tr -d ' '
+      fi
+    }
 
     send_slack() {
       curl -sf -X POST "$SLACK_WEBHOOK_URL" \
@@ -897,10 +907,13 @@ data:
       echo "Found ${IP_COUNT} IP(s) exceeding 429 threshold, sending Slack alert..."
 
       # Build a Slack message per offending IP
-      BLOCKS=$(echo "$RESULT_429" | jq -r --arg win "$WINDOW_MINUTES" --arg thr "$THRESHOLD_429" --arg kibana "$KIBANA_URL" '
+      EMOJI_PREFIX=$(pick_emoji)
+      LINK_TEXT="${EMOJI_PREFIX:+${EMOJI_PREFIX} }Investigate in Kibana"
+
+      BLOCKS=$(echo "$RESULT_429" | jq -r --arg win "$WINDOW_MINUTES" --arg thr "$THRESHOLD_429" --arg kibana "$KIBANA_INVESTIGATE_URL" --arg linktxt "$LINK_TEXT" '
         [
           { "type": "header", "text": { "type": "plain_text", "text": ":warning: 429 Rate Limit Alert" } },
-          { "type": "section", "text": { "type": "mrkdwn", "text": ("*Window:* last " + $win + " min  |  *Threshold:* >= " + $thr + " requests  |  <" + $kibana + "|:kibana: Investigate in Kibana>") } }
+          { "type": "section", "text": { "type": "mrkdwn", "text": ("*Window:* last " + $win + " min  |  *Threshold:* >= " + $thr + " requests  |  <" + $kibana + "|" + $linktxt + ">") } }
         ] + [
           .aggregations.by_ip.buckets[] | (
             { "type": "section", "text": { "type": "mrkdwn", "text": (
@@ -950,10 +963,13 @@ data:
     if [ "$STATUS_COUNT" -gt 0 ]; then
       echo "Found 5xx errors, sending Slack alert..."
 
-      BLOCKS_5XX=$(echo "$RESULT_5XX" | jq -r --arg win "$WINDOW_MINUTES" --arg kibana "$KIBANA_URL" '
+      EMOJI_PREFIX=$(pick_emoji)
+      LINK_TEXT="${EMOJI_PREFIX:+${EMOJI_PREFIX} }Investigate in Kibana"
+
+      BLOCKS_5XX=$(echo "$RESULT_5XX" | jq -r --arg win "$WINDOW_MINUTES" --arg kibana "$KIBANA_INVESTIGATE_URL" --arg linktxt "$LINK_TEXT" '
         [
           { "type": "header", "text": { "type": "plain_text", "text": ":fire: 5xx Server Error Alert" } },
-          { "type": "section", "text": { "type": "mrkdwn", "text": ("*Window:* last " + $win + " min  |  <" + $kibana + "|:kibana: Investigate in Kibana>") } }
+          { "type": "section", "text": { "type": "mrkdwn", "text": ("*Window:* last " + $win + " min  |  <" + $kibana + "|" + $linktxt + ">") } }
         ] + [
           .aggregations.by_status.buckets[] | (
             { "type": "section", "text": { "type": "mrkdwn", "text": (

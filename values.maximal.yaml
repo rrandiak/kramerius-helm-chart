@@ -432,6 +432,76 @@ adminClient:
       cpu: "50m"
       memory: "64Mi"
 
+# ---------------------------------------------------------------------------
+# ELK stack
+# ---------------------------------------------------------------------------
+elk:
+  enabled: true
+
+  elasticsearch:
+    image:
+      repository: elasticsearch
+      tag: "9.1.2"
+      pullPolicy: IfNotPresent
+    env:
+      discoveryType: single-node
+      javaOpts: "-Xms1g -Xmx8g"
+      xpackSecurityEnabled: "false"
+    storage:
+      storageClass: ""
+      size: 128Gi
+    resources:
+      requests:
+        cpu: "250m"
+        memory: "2Gi"
+      limits:
+        cpu: "1"
+        memory: "8Gi"
+
+  kibana:
+    image:
+      repository: kibana
+      tag: "9.1.2"
+      pullPolicy: IfNotPresent
+    resources:
+      requests:
+        cpu: "250m"
+        memory: "512Mi"
+      limits:
+        cpu: "1"
+        memory: "2Gi"
+
+  filebeat:
+    image:
+      repository: elastic/filebeat
+      tag: "9.1.2"
+      pullPolicy: IfNotPresent
+    storage:
+      storageClass: ""
+      size: 1Gi
+    resources:
+      requests:
+        cpu: "100m"
+        memory: "128Mi"
+      limits:
+        cpu: "1"
+        memory: "1Gi"
+
+  gatewayLogs:
+    storageClass: ""
+    size: 10Gi
+
+  # Slack alerting: monitors Elasticsearch access logs for 429s and 5xx errors.
+  slackAlerts:
+    slackWebhookUrl: "https://hooks.slack.com/services/XXXXX/XXXXX/XXXXX"
+    schedule: "*/10 * * * *"
+    windowMinutes: 10
+    threshold429: 50
+    image:
+      repository: dwdraju/alpine-curl-jq
+      tag: "latest"
+      pullPolicy: IfNotPresent
+
 ingress:
   enabled: true
   className: nginx
