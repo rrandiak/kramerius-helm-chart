@@ -55,6 +55,17 @@ gateway:
 - Peak hours allow a tighter limit during business hours.
 - Rules are evaluated **top to bottom** — the first matching rule wins. Each rule matches by `pathPrefix` and optionally by `pathSuffix`.
 
+### IP Whitelist
+
+IPs or CIDRs listed in `gateway.rateLimitWhitelist` are completely exempt from both request rate limits and download quotas:
+
+```yaml
+gateway:
+  rateLimitWhitelist:
+    - "10.20.30.40"        # exact IP
+    - "192.168.1.0/24"     # CIDR range
+```
+
 ## Download Quota
 
 Download quotas track bytes actually sent, not just request counts. Implemented across three Lua phases:
@@ -97,6 +108,7 @@ All gateway configuration lives in `values.yaml` under the `gateway` key.
 | `gateway.proxy.sendTimeout` | `120s` | Upstream send timeout |
 | `gateway.proxy.readTimeout` | `120s` | Upstream read timeout |
 | `gateway.peakHours` | `enabled: false`, `from: 9`, `to: 18` | Peak window for tighter rate/download limits |
+| `gateway.rateLimitWhitelist` | `[]` | IPs/CIDRs exempt from rate limits and download quotas |
 | `gateway.rateLimits` | see values.yaml | Array of rate limit rules |
 | `gateway.downloadLimits` | see values.yaml | Array of download quota rules |
 | `gateway.resources` | `100m`/`1000m` CPU, `128Mi`/`512Mi` memory | Resource requests and limits |

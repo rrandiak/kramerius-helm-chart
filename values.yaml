@@ -409,6 +409,9 @@ gateway:
     enabled: false
     from: 9
     to: 18
+  # Client IPs or CIDRs exempt from both request rate limits and download quotas.
+  # Supports exact IPs ("1.2.3.4") and CIDR notation ("10.0.0.0/8").
+  rateLimitWhitelist: []
   # Longest pathPrefix wins. One counter bucket per client IP + matched pathPrefix + time window.
   rateLimits:
     - pathPrefix: "/"

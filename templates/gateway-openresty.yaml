@@ -50,6 +50,35 @@ data:
       return ngx.md5(prefix):sub(1, 16)
     end
 
+    -- CIDR matching for IP whitelist
+    local function ip_to_int(ip)
+      local o1, o2, o3, o4 = ip:match("^(%d+)%.(%d+)%.(%d+)%.(%d+)$")
+      if not o1 then return nil end
+      return tonumber(o1) * 16777216 + tonumber(o2) * 65536 + tonumber(o3) * 256 + tonumber(o4)
+    end
+
+    function _M.ip_in_cidrs(ip, cidrs)
+      if not cidrs or #cidrs == 0 then return false end
+      local ip_int = ip_to_int(ip)
+      if not ip_int then return false end
+      for _, entry in ipairs(cidrs) do
+        local net, mask_len = entry:match("^(.+)/(%d+)$")
+        if net then
+          local net_int = ip_to_int(net)
+          local bits = tonumber(mask_len)
+          if net_int and bits >= 0 and bits <= 32 then
+            local shift = 2 ^ (32 - bits)
+            if math.floor(ip_int / shift) == math.floor(net_int / shift) then
+              return true
+            end
+          end
+        else
+          if ip == entry then return true end
+        end
+      end
+      return false
+    end
+
     return _M
   ratelimit_config.lua: |
     return {
@@ -59,6 +88,12 @@ data:
         { pathPrefix = {{ .pathPrefix | quote }}, pathSuffix = {{ .pathSuffix | default "" | quote }}, maxRequests = {{ if hasKey . "maxRequests" }}{{ .maxRequests }}{{ else }}nil{{ end }}, peakMaxRequests = {{ if hasKey . "peakMaxRequests" }}{{ .peakMaxRequests }}{{ else }}nil{{ end }}, offPeakMaxRequests = {{ if hasKey . "offPeakMaxRequests" }}{{ .offPeakMaxRequests }}{{ else }}nil{{ end }}, windowSeconds = {{ .windowSeconds }} },
     {{- end }}
       }
+    }
+  whitelist_config.lua: |
+    return {
+    {{- range .Values.gateway.rateLimitWhitelist }}
+      {{ . | quote }},
+    {{- end }}
     }
   download_limit_config.lua: |
     return {
@@ -72,6 +107,7 @@ data:
     local common = require "gateway_common"
     local limits = require "ratelimit_config"
     local dlc = require "download_limit_config"
+    local whitelist = require "whitelist_config"
 
     local function is_peak_hour(peak)
       if not peak or not peak.enabled then
@@ -110,13 +146,15 @@ data:
     end
 
     local uri = ngx.var.request_uri or "/"
+    local ip = common.client_ip()
+    local whitelisted = common.ip_in_cidrs(ip, whitelist)
+
     local rule = common.pick_rule(uri, limits.rules)
 
-    if rule then
+    if rule and not whitelisted then
       local max_req = effective_max_requests(rule, limits.peakHours)
       if max_req then
         local dict = ngx.shared.gateway_rl
-        local ip = common.client_ip()
         local period = rule.windowSeconds
         local bucket = math.floor(ngx.time() / period) * period
         local key = table.concat({"rl", "v1", ip, common.ep_token(rule.pathPrefix .. (rule.pathSuffix or "")), tostring(bucket)}, ":")
@@ -135,10 +173,9 @@ data:
     end
 
     local dlr = common.pick_rule(uri, dlc.rules)
-    if dlr then
+    if dlr and not whitelisted then
       local dl_max = effective_max_bytes(dlr, limits.peakHours)
       if dl_max then
-        local ip = common.client_ip()
         local period = dlr.windowSeconds
         local bucket = math.floor(ngx.time() / period) * period
         ngx.ctx.dl_key = table.concat({"dl", "v1", ip, common.ep_token(dlr.pathPrefix .. (dlr.pathSuffix or "")), tostring(bucket)}, ":")

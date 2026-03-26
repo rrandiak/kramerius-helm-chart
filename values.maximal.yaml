@@ -380,6 +380,10 @@ gateway:
     enabled: true
     from: 9
     to: 18
+  # IPs/CIDRs exempt from rate limits and download quotas.
+  rateLimitWhitelist:
+    - "10.20.30.40"
+    - "192.168.1.0/24"
   # Two rules: tighter limit for downloads (/search/api/item/*/streams/), global fallback.
   rateLimits:
     - pathPrefix: "/search/api/item/"
