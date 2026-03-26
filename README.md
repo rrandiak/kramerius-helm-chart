@@ -1,5 +1,7 @@
 # Kramerius 7 — Helm Deployment
 
+*Deployment is functional, but still a work in progress. There may be mistakes in the documentation.*
+
 This chart deploys **Kramerius 7**, a digital library platform used for managing and serving digitized documents. The chart targets a Kubernetes cluster with the CloudNative-PG operator installed.
 
 ## Components
@@ -128,4 +130,4 @@ Key values to configure before deploying:
 | `gateway.downloadLimits` | Per-IP download quota |
 | `ingress.host` / `ingress.admin.host` / `ingress.processManager.host` | Hostnames for each exposed service |
 
-See `helm/kramerius/values.yaml` for full annotated defaults.
+See `values.yaml` for full annotated defaults.
