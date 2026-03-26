@@ -59,6 +59,8 @@ flowchart TD
     Workers -- "RW" --> Media
 ```
 
+*Support for multiple import directories depends on future Kramerius backend work. For a single import directory, everything is functional.*
+
 ## Request Flow
 
 1. **Client & Admin Client → nginx-ingress** — TLS termination, SNI-based routing to correct service.
@@ -98,16 +100,42 @@ flowchart TD
 - cert-manager (for TLS)
 - Shared storage provisioner (NFS or a RWX-capable StorageClass)
 
-## Quick Start
+## Deployment
+
+### Option 1: Helm
 
 ```bash
-# Install / upgrade
-helm upgrade --install kramerius ./helm/kramerius \
+helm repo add kramerius https://rrandiak.github.io/kramerius-helm-chart
+helm repo update
+
+helm upgrade --install kramerius kramerius/kramerius \
   --namespace kramerius --create-namespace \
   -f values.yaml
 
-# Check status
 kubectl -n kramerius get pods
+```
+
+### Option 2: Kustomize with Helm chart
+
+Create a `kustomization.yaml`:
+
+```yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+helmCharts:
+- name: kramerius
+  repo: https://rrandiak.github.io/kramerius-helm-chart
+  releaseName: kramerius
+  namespace: k7-kramerius
+  version: 1.0.0
+  valuesFile: values.yaml
+```
+
+Then apply:
+
+```bash
+kubectl apply -k .
 ```
 
 ## Values Reference
