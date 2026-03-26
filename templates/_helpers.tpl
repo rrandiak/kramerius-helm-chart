@@ -112,7 +112,7 @@ Worker image pull policy
 Process manager base URL for workers (cluster DNS; must match .Values.namespace).
 */}}
 {{- define "kramerius.processManagerUrl" -}}
-http://process-manager.{{ .Values.namespace }}.svc.cluster.local:8080/process-manager/api/
+http://process-manager.{{ .Values.namespace }}.svc.cluster.local:80/process-manager/api/
 {{- end }}
 
 {{/*
@@ -120,7 +120,7 @@ Process manager host for configuration.properties (processManagerHost key).
 Used by kramerius-public and kramerius-curator.
 */}}
 {{- define "kramerius.processManagerHost" -}}
-http://process-manager.{{ .Values.namespace }}.svc.cluster.local:8080
+http://process-manager.{{ .Values.namespace }}.svc.cluster.local:80
 {{- end }}
 
 {{/*
