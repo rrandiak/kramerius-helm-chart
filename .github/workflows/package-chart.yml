@@ -20,16 +20,21 @@ jobs:
       with:
         version: v3.12.0
 
-    - name: Package Helm chart and generate index
+    - name: Checkout gh-pages branch
+      uses: actions/checkout@v3
+      with:
+        ref: gh-pages
+        path: gh-pages
+
+    - name: Package Helm chart and merge with existing packages
       run: |
         helm package .
-        mkdir -p repo
-        mv *.tgz repo/
-        helm repo index repo --url https://rrandiak.github.io/kramerius-helm-chart/
+        mv *.tgz gh-pages/
+        helm repo index gh-pages --url https://rrandiak.github.io/kramerius-helm-chart/
 
     - name: Deploy to gh-pages branch
       uses: peaceiris/actions-gh-pages@v3
       with:
         github_token: ${{ secrets.GITHUB_TOKEN }}
-        publish_dir: ./repo
+        publish_dir: ./gh-pages
         publish_branch: gh-pages
