@@ -2,16 +2,16 @@ apiVersion: v1
 entries:
   kramerius:
   - apiVersion: v2
-    appVersion: 7.1.0-rc1
-    created: "2025-06-03T11:48:42.298784364Z"
-    description: Helm chart for orchestrating multi-instance Kramerius
-    digest: 15adb99ac5b0249f8f48881de6d33e54dfdc0a614bc4877704bfce819883af93
+    appVersion: 7.2.0
+    created: "2026-03-26T12:37:00.803911535Z"
+    description: Kramerius 7 - digital library system
+    digest: afb1f2d2f666ad0a336f33ca801c1b3dab11b3cb92b2be9a0622b44b93d54f73
     maintainers:
     - email: robert.randiak@mzk.cz
       name: Randiak Robert
     name: kramerius
     type: application
     urls:
-    - https://rrandiak.github.io/kramerius-helm-chart/kramerius-0.1.0.tgz
-    version: 0.1.0
-generated: "2025-06-03T11:48:42.296986912Z"
+    - https://rrandiak.github.io/kramerius-helm-chart/kramerius-1.0.0.tgz
+    version: 1.0.0
+generated: "2026-03-26T12:37:00.799870534Z"
