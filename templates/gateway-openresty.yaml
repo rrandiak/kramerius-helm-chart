@@ -370,6 +370,20 @@ spec:
         - name: openresty
           image: {{ .Values.gateway.image.repository }}:{{ .Values.gateway.image.tag }}
           imagePullPolicy: {{ .Values.gateway.image.pullPolicy | default "IfNotPresent" }}
+          {{- if .Values.elk.enabled }}
+          command:
+            - /bin/sh
+            - -c
+            - |
+              /usr/local/openresty/bin/openresty -g 'daemon off;' &
+              NGINX_PID=$!
+              (while true; do
+                sleep 3600
+                mv /var/log/gateway/access.log /var/log/gateway/access.log.1
+                kill -USR1 $NGINX_PID
+              done) &
+              wait $NGINX_PID
+          {{- end }}
           env:
             - name: TZ
               value: {{ .Values.timezone | quote }}
@@ -390,6 +404,23 @@ spec:
             {{- end }}
           resources:
             {{- toYaml .Values.gateway.resources | nindent 12 }}
+        {{- if .Values.elk.enabled }}
+        - name: filebeat
+          image: {{ .Values.elk.filebeat.image.repository }}:{{ .Values.elk.filebeat.image.tag }}
+          imagePullPolicy: {{ .Values.elk.filebeat.image.pullPolicy | default "IfNotPresent" }}
+          command: ["filebeat", "-e", "--strict.perms=false"]
+          volumeMounts:
+            - name: filebeat-config
+              mountPath: /usr/share/filebeat/filebeat.yml
+              subPath: filebeat.yml
+            - name: filebeat-data
+              mountPath: /usr/share/filebeat/data
+            - name: gateway-access-logs
+              mountPath: /usr/share/filebeat/logs/gateway
+              readOnly: true
+          resources:
+            {{- toYaml .Values.elk.filebeat.resources | nindent 12 }}
+        {{- end }}
       volumes:
         - name: nginx-conf
           configMap:
@@ -402,8 +433,15 @@ spec:
             name: gateway-openresty-errors
         {{- if .Values.elk.enabled }}
         - name: gateway-access-logs
+          emptyDir:
+            medium: Memory
+            sizeLimit: {{ .Values.elk.gatewayLogs.size }}
+        - name: filebeat-config
+          configMap:
+            name: filebeat-config
+        - name: filebeat-data
           persistentVolumeClaim:
-            claimName: gateway-access-logs
+            claimName: filebeat-data
         {{- end }}
 ---
 apiVersion: v1

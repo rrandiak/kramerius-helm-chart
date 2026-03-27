@@ -2,7 +2,7 @@ apiVersion: v2
 name: kramerius
 description: Kramerius 7 - digital library system
 type: application
-version: 1.0.1
+version: 1.0.2
 appVersion: "7.2.0"
 maintainers:
   - name: Randiak Robert

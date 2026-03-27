@@ -5,26 +5,7 @@
      and ships them to Elasticsearch with GeoIP enrichment.
      ================================================================ */}}
 
-{{/* ---------- Gateway access-logs shared PVC ---------- */}}
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: gateway-access-logs
-  namespace: {{ .Values.namespace }}
-  labels:
-    {{- include "kramerius.labels" . | nindent 4 }}
-    app.kubernetes.io/component: elk
-spec:
-  {{- $glSc := .Values.elk.gatewayLogs.storageClass | default .Values.defaultStorageClass }}
-  {{- if $glSc }}
-  storageClassName: {{ $glSc | quote }}
-  {{- end }}
-  accessModes:
-    - ReadWriteMany
-  resources:
-    requests:
-      storage: {{ .Values.elk.gatewayLogs.size }}
----
+{{/* Gateway access logs use in-memory emptyDir in the gateway pod (see gateway-openresty.yaml) */}}
 {{/* ---------- Elasticsearch PVC ---------- */}}
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -109,7 +90,8 @@ data:
         id: k7-gateway
         enabled: true
         paths:
-          - /usr/share/filebeat/logs/gateway/*.log
+          - /usr/share/filebeat/logs/gateway/access.log
+          - /usr/share/filebeat/logs/gateway/access.log.1
         parsers:
           - ndjson:
               target: "request"
@@ -675,32 +657,31 @@ spec:
   selector:
     app.kubernetes.io/component: kibana
   type: ClusterIP
+{{/* Filebeat now runs as a sidecar in the gateway-openresty Deployment (see gateway-openresty.yaml) */}}
 ---
-{{/* ---------- Filebeat Deployment ---------- */}}
-apiVersion: apps/v1
-kind: Deployment
+{{/* ---------- Elasticsearch setup Job ---------- */}}
+apiVersion: batch/v1
+kind: Job
 metadata:
-  name: filebeat
+  name: setup-elasticsearch-{{ include "kramerius.labels" . | sha256sum | trunc 8 }}
   namespace: {{ .Values.namespace }}
   labels:
     {{- include "kramerius.labels" . | nindent 4 }}
-    app.kubernetes.io/name: filebeat
-    app.kubernetes.io/component: filebeat
+    app.kubernetes.io/component: elk
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "0"
+    "helm.sh/hook-delete-policy": before-hook-creation
 spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app.kubernetes.io/component: filebeat
+  backoffLimit: 5
   template:
     metadata:
       labels:
-        app.kubernetes.io/component: filebeat
-        app.kubernetes.io/name: filebeat
-      annotations:
-        checksum/filebeat-config: {{ include "kramerius.checksum.elkPod" . | quote }}
+        app.kubernetes.io/component: elk
     spec:
       {{- include "kramerius.imagePullSecrets" . | nindent 6 }}
-      initContainers:
+      restartPolicy: OnFailure
+      containers:
         - name: setup-elasticsearch
           image: curlimages/curl:latest
           command: ["sh", "/setup/setup-elasticsearch.sh"]
@@ -714,32 +695,10 @@ spec:
             - name: filebeat-config
               mountPath: /setup/k7-access-logs-pipeline.json
               subPath: k7-access-logs-pipeline.json
-      containers:
-        - name: filebeat
-          image: {{ .Values.elk.filebeat.image.repository }}:{{ .Values.elk.filebeat.image.tag }}
-          imagePullPolicy: {{ .Values.elk.filebeat.image.pullPolicy | default "IfNotPresent" }}
-          command: ["filebeat", "-e", "--strict.perms=false"]
-          volumeMounts:
-            - name: filebeat-config
-              mountPath: /usr/share/filebeat/filebeat.yml
-              subPath: filebeat.yml
-            - name: filebeat-data
-              mountPath: /usr/share/filebeat/data
-            - name: gateway-access-logs
-              mountPath: /usr/share/filebeat/logs/gateway
-              readOnly: true
-          resources:
-            {{- toYaml .Values.elk.filebeat.resources | nindent 12 }}
       volumes:
         - name: filebeat-config
           configMap:
             name: filebeat-config
-        - name: filebeat-data
-          persistentVolumeClaim:
-            claimName: filebeat-data
-        - name: gateway-access-logs
-          persistentVolumeClaim:
-            claimName: gateway-access-logs
 ---
 {{/* ---------- Kibana Ingress ---------- */}}
 {{- if and .Values.ingress.enabled .Values.ingress.kibana.host }}

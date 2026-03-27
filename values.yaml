@@ -562,10 +562,10 @@ elk:
         cpu: "1"
         memory: "1Gi"
 
-  # Shared PVC between gateway and filebeat for access logs.
+  # In-memory emptyDir shared between gateway and filebeat sidecar for access logs.
+  # Backed by tmpfs (RAM); counts against the pod's memory limit.
   gatewayLogs:
-    storageClass: ""
-    size: 10Gi
+    size: 256Mi
 
   # Slack alerting: monitors Elasticsearch access logs for 429s and 5xx errors.
   # Only deployed when slackWebhookUrl is set.

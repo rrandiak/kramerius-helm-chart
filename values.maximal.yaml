@@ -492,8 +492,7 @@ elk:
         memory: "1Gi"
 
   gatewayLogs:
-    storageClass: ""
-    size: 10Gi
+    size: 256Mi
 
   # Slack alerting: monitors Elasticsearch access logs for 429s and 5xx errors.
   slackAlerts:
