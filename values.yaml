@@ -351,6 +351,8 @@ workerGroups:
     #   repository: ceskaexpedice/curator-worker
     #   tag: "7.2.0"
     # profilesSubset: "import,new_indexer_index_object"
+    workerLoopSleepSecs: 10
+    workerLoopPrintSecs: 30
     env:
       CATALINA_OPTS: "-Xms512M -Xmx2G"
     javaagentExtraCatalinaOpts: ""
@@ -372,6 +374,8 @@ workerGroups:
   # - name: ingest
   #   replicas: 2
   #   profilesSubset: "import,new_indexer_index_object"
+  #   workerLoopSleepSecs: 10
+  #   workerLoopPrintSecs: 30
   #   env:
   #     CATALINA_OPTS: "-Xms512M -Xmx2G"
   #   config:

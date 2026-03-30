@@ -2,6 +2,14 @@
 Worker groups - one StatefulSet + headless Service + ConfigMap per group.
 In-cluster WORKER_BASE_URL (pod DNS) lets process-manager call each worker; not exposed via Ingress.
 */}}
+{{/* Validate unique worker group names */}}
+{{- $seenNames := list }}
+{{- range .Values.workerGroups }}
+  {{- if has .name $seenNames }}
+    {{- fail (printf "workerGroups: duplicate name %q — each worker group must have a unique name" .name) }}
+  {{- end }}
+  {{- $seenNames = append $seenNames .name }}
+{{- end }}
 {{- range .Values.workerGroups }}
 {{- $group := . }}
 {{- $root := $ }}
@@ -82,6 +90,12 @@ spec:
                   fieldPath: metadata.name
             - name: WORKER_BASE_URL
               value: "http://$(POD_NAME).worker-{{ $group.name }}.{{ $root.Values.namespace }}.svc.cluster.local:8080/worker/api/"
+            - name: WORKER_ID
+              value: "$(POD_NAME)"
+            - name: WORKER_LOOP_SLEEP_SECS
+              value: {{ $group.workerLoopSleepSecs | default 10 | quote }}
+            - name: WORKER_LOOP_PRINT_SECS
+              value: {{ $group.workerLoopPrintSecs | default 30 | quote }}
             - name: MANAGER_BASE_URL
               value: {{ include "kramerius.processManagerUrl" $root | quote }}
             {{- if $group.profilesSubset }}
