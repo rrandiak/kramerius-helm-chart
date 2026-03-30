@@ -249,11 +249,13 @@ includeProcessManagerHost (bool),
 Comma-joined list of import mount paths from storages.imports.
 */}}
 {{- define "kramerius.importDirectories" -}}
-{{- $dirs := list }}
-{{- range .Values.storages.imports }}
-{{- $dirs = append $dirs .mountPath }}
+{{- $dir := .Values.storages.imports.directory }}
+{{- range .Values.storages.imports.volumes }}
+{{- if not (hasPrefix $dir .mountPath) }}
+{{- fail (printf "Import volume %q mountPath %q is not under imports.directory %q" .name .mountPath $dir) }}
 {{- end }}
-{{- join "," $dirs }}
+{{- end }}
+{{- $dir }}
 {{- end }}
 
 {{- define "kramerius.configurationProperties.baseContent" -}}
@@ -390,7 +392,7 @@ Usage: include "kramerius.importStorageVolumes" (dict "root" $)
 */}}
 {{- define "kramerius.importStorageVolumes" -}}
 {{- $root := .root }}
-{{- range $imp := $root.Values.storages.imports }}
+{{- range $imp := $root.Values.storages.imports.volumes }}
 {{- $impName := printf "import-%s" $imp.name }}
 {{- $claimName := $imp.existingClaim | default (printf "%s-%s" (include "kramerius.fullname" $root) ($impName | trunc 63 | trimSuffix "-")) }}
 - name: {{ $impName }}
@@ -406,7 +408,7 @@ Usage: include "kramerius.importStorageVolumeMounts" (dict "root" $ "readOnly" t
 {{- define "kramerius.importStorageVolumeMounts" -}}
 {{- $root := .root }}
 {{- $ro := .readOnly | default false }}
-{{- range $imp := $root.Values.storages.imports }}
+{{- range $imp := $root.Values.storages.imports.volumes }}
 - mountPath: {{ $imp.mountPath }}
   name: import-{{ $imp.name }}
   readOnly: {{ $ro }}

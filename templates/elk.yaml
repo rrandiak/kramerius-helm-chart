@@ -806,7 +806,6 @@ metadata:
     app.kubernetes.io/component: kibana
 spec:
   backoffLimit: 3
-  ttlSecondsAfterFinished: 300
   template:
     metadata:
       labels:

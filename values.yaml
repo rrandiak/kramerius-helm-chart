@@ -26,28 +26,32 @@ storages:
 
   # Directory holding the Java agent JAR; when javaagent.enabled, that file is mounted as /root/.kramerius4/javaagent.jar (see javaagent.jarFile).
   javaagents:
-    type: nfs
-    nfsServer: ""
-    nfsPath: /data/javaagents
-    existingClaim: ""
-    storageClass: nfs
-    size: 1Gi
-    # NFS mount options (e.g. ["hard", "nfsvers=4.1"]). Only used when type: nfs.
-    mountOptions: []
+    # Example
+    # type: nfs
+    # nfsServer: ""
+    # nfsPath: /data/javaagents
+    # existingClaim: ""
+    # storageClass: nfs
+    # size: 1Gi
+    # # NFS mount options (e.g. ["hard", "nfsvers=4.1"]). Only used when type: nfs.
+    # mountOptions: []
 
-  # Import storages — each entry is mounted at its mountPath on curator and workers.
-  # Multiple entries allow separate NFS shares or PVCs per import source.
-  # The import.directory configuration property is auto-generated as a comma-joined list of all mountPaths.
-  #   - name: ndk
-  #     mountPath: /data/import/ndk
-  #     type: nfs
-  #     nfsServer: ""
-  #     nfsPath: /data/kramerius/import/ndk
-  #     existingClaim: ""
-  #     storageClass: nfs
-  #     size: 50Gi
-  #     mountOptions: []
-  imports: []
+  # Import storages — a single import.directory with multiple volume mounts underneath.
+  # The import.directory configuration property is set to imports.directory.
+  # Each volume's mountPath must be under imports.directory.
+  imports:
+    directory: /data/import
+    volumes: []
+    # Example:
+    #   - name: ndk
+    #     mountPath: /data/import/ndk
+    #     type: nfs
+    #     nfsServer: ""
+    #     nfsPath: /data/kramerius/import/ndk
+    #     existingClaim: ""
+    #     storageClass: nfs
+    #     size: 50Gi
+    #     mountOptions: []
 
   akubra-object-store:
     type: nfs
@@ -70,31 +74,34 @@ storages:
   # Media server volumes — mounted read-write on workers only.
   # Typically NFS so media server processes running outside the cluster can mount the same share.
   imageserver:
-    type: nfs
-    nfsServer: ""
-    nfsPath: /data/imageserver
-    existingClaim: ""
-    storageClass: nfs
-    size: 50Gi
-    mountOptions: []
+    # Example
+    # type: nfs
+    # nfsServer: ""
+    # nfsPath: /data/imageserver
+    # existingClaim: ""
+    # storageClass: nfs
+    # size: 50Gi
+    # mountOptions: []
 
   audioserver:
-    type: nfs
-    nfsServer: ""
-    nfsPath: /data/audioserver
-    existingClaim: ""
-    storageClass: nfs
-    size: 10Gi
-    mountOptions: []
+    # Example
+    # type: nfs
+    # nfsServer: ""
+    # nfsPath: /data/audioserver
+    # existingClaim: ""
+    # storageClass: nfs
+    # size: 10Gi
+    # mountOptions: []
 
   pdfserver:
-    type: nfs
-    nfsServer: ""
-    nfsPath: /data/pdfserver
-    existingClaim: ""
-    storageClass: nfs
-    size: 10Gi
-    mountOptions: []
+    # Example
+    # type: nfs
+    # nfsServer: ""
+    # nfsPath: /data/pdfserver
+    # existingClaim: ""
+    # storageClass: nfs
+    # size: 10Gi
+    # mountOptions: []
 
 # Keycloak adapter: drives keycloak.json (public/curator) and Keycloak lines in configuration.properties.
 auth:
