@@ -327,6 +327,17 @@ workerTomcatLogs:
   storageClass: nfs
   size: 5Gi
 
+# Process platform logs (PVC) configuration for all worker StatefulSets.
+# Mounted at /root/.processplatform; each pod writes to its own subdirectory (named after WORKER_ID / POD_NAME).
+# Each worker StatefulSet creates its own per-replica volumeClaimTemplates.
+workerProcessLogs:
+  type: pvc
+  nfsServer: ""
+  nfsPath: ""
+  existingClaim: ""
+  storageClass: nfs
+  size: 5Gi
+
 # ---------------------------------------------------------------------------
 # Worker groups - define any number of groups
 # Each group becomes its own StatefulSet + headless Service.

@@ -285,6 +285,12 @@ workerTomcatLogs:
   storageClass: nfs-rwx
   size: 20Gi
 
+workerProcessLogs:
+  type: pvc
+  existingClaim: ""
+  storageClass: nfs-rwx
+  size: 20Gi
+
 workerGroups:
   # Default catch-all curator worker — handles all process types.
   - name: curator

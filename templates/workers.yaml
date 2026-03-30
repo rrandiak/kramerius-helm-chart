@@ -139,6 +139,9 @@ spec:
             - mountPath: /usr/local/tomcat/logs
               name: worker-tomcat-logs
               readOnly: false
+            - mountPath: /root/.processplatform
+              name: worker-process-logs
+              readOnly: false
             - mountPath: /data/akubra/objectStore
               name: akubra-objectstore
               readOnly: false
@@ -188,7 +191,8 @@ spec:
 {{- include "kramerius.sharedStorageVolume" (dict "root" $root "volumeName" "audioserver-storage" "storageKey" "audioserver") | nindent 8 }}
 {{- include "kramerius.sharedStorageVolume" (dict "root" $root "volumeName" "pdfserver-storage" "storageKey" "pdfserver") | nindent 8 }}
 {{- include "kramerius.tomcatLogsNfsVolume" (dict "root" $root "volumeName" "worker-tomcat-logs" "tomcatLogs" ( $group.tomcatLogs | default $root.Values.workerTomcatLogs )) | nindent 8 }}
-{{- include "kramerius.tomcatLogsVolumeClaimTemplates" (dict "root" $root "volumeName" "worker-tomcat-logs" "tomcatLogs" ( $group.tomcatLogs | default $root.Values.workerTomcatLogs )) | nindent 2 }}
+{{- include "kramerius.tomcatLogsNfsVolume" (dict "root" $root "volumeName" "worker-process-logs" "tomcatLogs" ( $group.processLogs | default $root.Values.workerProcessLogs )) | nindent 8 }}
+{{- include "kramerius.workerVolumeClaimTemplates" (dict "root" $root "tomcatLogs" ( $group.tomcatLogs | default $root.Values.workerTomcatLogs ) "processLogs" ( $group.processLogs | default $root.Values.workerProcessLogs )) | nindent 2 }}
 ---
 {{/* Headless service - required for stable pod DNS names used in WORKER_BASE_URL */}}
 apiVersion: v1

@@ -455,6 +455,46 @@ volumeClaimTemplates:
 {{- end }}
 
 {{/*
+Worker volumeClaimTemplates combining tomcat logs and process logs PVC entries.
+Emits a single volumeClaimTemplates block with one entry per PVC-type log storage,
+avoiding duplicate volumeClaimTemplates keys in the StatefulSet manifest.
+Usage: include "kramerius.workerVolumeClaimTemplates" (dict "root" $ "tomcatLogs" <config> "processLogs" <config>)
+*/}}
+{{- define "kramerius.workerVolumeClaimTemplates" -}}
+{{- $root := .root }}
+{{- $tl := .tomcatLogs }}
+{{- $pl := .processLogs }}
+{{- $default := $root.Values.defaultStorageClass }}
+{{- $hasTomcat := and $tl (eq $tl.type "pvc") }}
+{{- $hasProcess := and $pl (eq $pl.type "pvc") }}
+{{- if or $hasTomcat $hasProcess }}
+volumeClaimTemplates:
+  {{- if $hasTomcat }}
+  - metadata:
+      name: worker-tomcat-logs
+    spec:
+      accessModes:
+        - ReadWriteOnce
+      storageClassName: {{ default $default $tl.storageClass | quote }}
+      resources:
+        requests:
+          storage: {{ $tl.size }}
+  {{- end }}
+  {{- if $hasProcess }}
+  - metadata:
+      name: worker-process-logs
+    spec:
+      accessModes:
+        - ReadWriteOnce
+      storageClassName: {{ default $default $pl.storageClass | quote }}
+      resources:
+        requests:
+          storage: {{ $pl.size }}
+  {{- end }}
+{{- end }}
+{{- end }}
+
+{{/*
 Fixed path for the JVM -javaagent JAR in the container (single file mount from storages.javaagents).
 */}}
 {{- define "kramerius.javaagentJarMountPath" -}}/root/.kramerius4/javaagent.jar{{- end }}
