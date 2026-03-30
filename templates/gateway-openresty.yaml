@@ -99,7 +99,7 @@ data:
     return {
       rules = {
     {{- range .Values.gateway.downloadLimits }}
-        { pathPrefix = {{ .pathPrefix | quote }}, pathSuffix = {{ .pathSuffix | default "" | quote }}, maxBytes = {{ .maxBytes }}, peakMaxBytes = {{ if hasKey . "peakMaxBytes" }}{{ .peakMaxBytes }}{{ else }}nil{{ end }}, offPeakMaxBytes = {{ if hasKey . "offPeakMaxBytes" }}{{ .offPeakMaxBytes }}{{ else }}nil{{ end }}, windowSeconds = {{ .windowSeconds }} },
+        { pathPrefix = {{ .pathPrefix | quote }}, pathSuffix = {{ .pathSuffix | default "" | quote }}, maxBytes = {{ if hasKey . "maxBytes" }}{{ .maxBytes }}{{ else }}nil{{ end }}, peakMaxBytes = {{ if hasKey . "peakMaxBytes" }}{{ .peakMaxBytes }}{{ else }}nil{{ end }}, offPeakMaxBytes = {{ if hasKey . "offPeakMaxBytes" }}{{ .offPeakMaxBytes }}{{ else }}nil{{ end }}, windowSeconds = {{ .windowSeconds }} },
     {{- end }}
       }
     }

@@ -600,6 +600,8 @@ elk:
     windowMinutes: 10
     # Minimum number of 429 responses from a single IP to trigger a Slack alert.
     threshold429: 50
+    # Set to false to suppress 5xx server error alerts.
+    report5xx: true
     # Comma-separated list of Slack emoji shortcodes to randomly prefix the
     # "Investigate in Kibana" link (e.g. ":kibana:,:mag:,:bar_chart:").
     # Leave empty to show the link without an emoji prefix.

@@ -851,6 +851,7 @@ data:
     KIBANA_URL="https://{{ .Values.ingress.kibana.host }}"
     KIBANA_INVESTIGATE_URL="${KIBANA_URL}{{ include "kramerius.kibanaInvestigatePath" . }}"
     EMOJI_LIST="{{ .Values.elk.slackAlerts.emoji }}"
+    REPORT_5XX="{{ .Values.elk.slackAlerts.report5xx | default true }}"
 
     pick_emoji() {
       if [ -n "$EMOJI_LIST" ]; then
@@ -930,58 +931,62 @@ data:
     fi
 
     # ==================== 5xx Server Error Report ====================
-    echo "Checking for 5xx responses in the last ${WINDOW_MINUTES} minutes..."
+    if [ "$REPORT_5XX" != "true" ]; then
+      echo "5xx reporting disabled, skipping."
+    else
+      echo "Checking for 5xx responses in the last ${WINDOW_MINUTES} minutes..."
 
-    RESULT_5XX=$(curl -sf "$ES_URL/k7-access-logs-*/_search" \
-      -H 'Content-Type: application/json' \
-      -d "{
-        \"size\": 0,
-        \"query\": {
-          \"bool\": {
-            \"filter\": [
-              { \"range\": { \"@timestamp\": { \"gte\": \"now-${WINDOW_MINUTES}m\" } } },
-              { \"regexp\": { \"request.status\": \"5[0-9][0-9]\" } }
-            ]
-          }
-        },
-        \"aggs\": {
-          \"by_status\": {
-            \"terms\": { \"field\": \"request.status\", \"size\": 10 },
-            \"aggs\": {
-              \"endpoints\": {
-                \"terms\": { \"field\": \"request.endpoint\", \"size\": 20 }
+      RESULT_5XX=$(curl -sf "$ES_URL/k7-access-logs-*/_search" \
+        -H 'Content-Type: application/json' \
+        -d "{
+          \"size\": 0,
+          \"query\": {
+            \"bool\": {
+              \"filter\": [
+                { \"range\": { \"@timestamp\": { \"gte\": \"now-${WINDOW_MINUTES}m\" } } },
+                { \"regexp\": { \"request.status\": \"5[0-9][0-9]\" } }
+              ]
+            }
+          },
+          \"aggs\": {
+            \"by_status\": {
+              \"terms\": { \"field\": \"request.status\", \"size\": 10 },
+              \"aggs\": {
+                \"endpoints\": {
+                  \"terms\": { \"field\": \"request.endpoint\", \"size\": 20 }
+                }
               }
             }
           }
-        }
-      }")
+        }")
 
-    STATUS_COUNT=$(echo "$RESULT_5XX" | jq '.aggregations.by_status.buckets | length')
+      STATUS_COUNT=$(echo "$RESULT_5XX" | jq '.aggregations.by_status.buckets | length')
 
-    if [ "$STATUS_COUNT" -gt 0 ]; then
-      echo "Found 5xx errors, sending Slack alert..."
+      if [ "$STATUS_COUNT" -gt 0 ]; then
+        echo "Found 5xx errors, sending Slack alert..."
 
-      EMOJI_PREFIX=$(pick_emoji)
-      LINK_TEXT="${EMOJI_PREFIX:+${EMOJI_PREFIX} }Investigate in Kibana"
+        EMOJI_PREFIX=$(pick_emoji)
+        LINK_TEXT="${EMOJI_PREFIX:+${EMOJI_PREFIX} }Investigate in Kibana"
 
-      BLOCKS_5XX=$(echo "$RESULT_5XX" | jq -r --arg win "$WINDOW_MINUTES" --arg kibana "$KIBANA_INVESTIGATE_URL" --arg linktxt "$LINK_TEXT" '
-        [
-          { "type": "header", "text": { "type": "plain_text", "text": ":fire: 5xx Server Error Alert" } },
-          { "type": "section", "text": { "type": "mrkdwn", "text": ("*Window:* last " + $win + " min  |  <" + $kibana + "|" + $linktxt + ">") } }
-        ] + [
-          .aggregations.by_status.buckets[] | (
-            { "type": "section", "text": { "type": "mrkdwn", "text": (
-              "*Status " + .key + "*  —  *" + (.doc_count | tostring) + " total requests*\n" +
-              "*Endpoints:*\n" + ([.endpoints.buckets[] | ("  " + .key + " — " + (.doc_count | tostring))] | join("\n"))
-            ) } }
-          )
-        ]')
+        BLOCKS_5XX=$(echo "$RESULT_5XX" | jq -r --arg win "$WINDOW_MINUTES" --arg kibana "$KIBANA_INVESTIGATE_URL" --arg linktxt "$LINK_TEXT" '
+          [
+            { "type": "header", "text": { "type": "plain_text", "text": ":fire: 5xx Server Error Alert" } },
+            { "type": "section", "text": { "type": "mrkdwn", "text": ("*Window:* last " + $win + " min  |  <" + $kibana + "|" + $linktxt + ">") } }
+          ] + [
+            .aggregations.by_status.buckets[] | (
+              { "type": "section", "text": { "type": "mrkdwn", "text": (
+                "*Status " + .key + "*  —  *" + (.doc_count | tostring) + " total requests*\n" +
+                "*Endpoints:*\n" + ([.endpoints.buckets[] | ("  " + .key + " — " + (.doc_count | tostring))] | join("\n"))
+              ) } }
+            )
+          ]')
 
-      send_slack "{\"blocks\":${BLOCKS_5XX}}"
-      echo "5xx alert sent."
-    else
-      echo "No 5xx errors found."
-    fi
+        send_slack "{\"blocks\":${BLOCKS_5XX}}"
+        echo "5xx alert sent."
+      else
+        echo "No 5xx errors found."
+      fi
+    fi  # end REPORT_5XX check
 
     echo "Done."
 ---
