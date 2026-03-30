@@ -12,6 +12,11 @@ spec:
     {{- if .Values.cnpg.processManager.storage.storageClass }}
     storageClass: {{ .Values.cnpg.processManager.storage.storageClass }}
     {{- end }}
+  {{- if .Values.cnpg.processManager.cluster.maxConnections }}
+  postgresql:
+    parameters:
+      max_connections: {{ .Values.cnpg.processManager.cluster.maxConnections | quote }}
+  {{- end }}
   bootstrap:
     initdb:
       database: process

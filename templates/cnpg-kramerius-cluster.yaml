@@ -12,6 +12,11 @@ spec:
     {{- if .Values.cnpg.kramerius.storage.storageClass }}
     storageClass: {{ .Values.cnpg.kramerius.storage.storageClass }}
     {{- end }}
+  {{- if .Values.cnpg.kramerius.cluster.maxConnections }}
+  postgresql:
+    parameters:
+      max_connections: {{ .Values.cnpg.kramerius.cluster.maxConnections | quote }}
+  {{- end }}
   bootstrap:
     initdb:
       database: kramerius

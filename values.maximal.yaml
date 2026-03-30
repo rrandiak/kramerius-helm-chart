@@ -126,6 +126,7 @@ cnpg:
     cluster:
       name: process-db
       instances: 3                  # HA: 3 instances (1 primary + 2 standbys)
+      maxConnections: ""
     storage:
       size: 50Gi
       storageClass: fast-ssd
@@ -134,6 +135,7 @@ cnpg:
     cluster:
       name: kramerius-db
       instances: 3
+      maxConnections: ""
     storage:
       size: 100Gi
       storageClass: fast-ssd

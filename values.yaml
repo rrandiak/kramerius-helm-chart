@@ -189,6 +189,7 @@ cnpg:
     cluster:
       name: process-db
       instances: 1
+      maxConnections: ""
     storage:
       size: 10Gi
       storageClass: ""
@@ -197,6 +198,7 @@ cnpg:
     cluster:
       name: kramerius-db
       instances: 1
+      maxConnections: ""
     storage:
       size: 10Gi
       storageClass: ""
