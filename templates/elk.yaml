@@ -343,6 +343,18 @@ data:
           fields:
             - {from: "request.body_bytes_sent", to: "request.bytes", type: long}
             - {from: "request.request_time", to: "request.request_time", type: float}
+      - script:
+          lang: javascript
+          id: convert_request_time_to_ms
+          source: >
+            function process(event) {
+              var t = event.Get("request.request_time");
+              if (t !== null) {
+                event.Put("request.request_time", t * 1000);
+              }
+            }
+      - convert:
+          fields:
             - {from: "request.status", to: "request.status", type: string}
             - {from: "request.client_ip", to: "request.client_ip", type: ip}
           ignore_missing: true
