@@ -430,11 +430,20 @@ gateway:
   clientMaxBodySize: 512m
   # Gateway routes this URI prefix to kramerius-curator (RW); everything else to kramerius-public. Set "" to disable.
   curatorPathPrefix: "/search/api/admin/"
-  error429: |
-    Too Many Requests
-  # Shown when aggregate download quota (per IP / window) is exceeded.
-  error429Download: |
-    Download quota exceeded for this period. Try again later.
+  # Optional custom text prepended to the 429 rate-limit body before the generated details.
+  # When empty and error429Details is true, only the generated details are shown.
+  # When empty and error429Details is false, a plain "Too Many Requests" is shown.
+  error429: ""
+  # Optional custom text prepended to the 429 download-quota body before the generated details.
+  # When empty and error429DownloadDetails is true, only the generated details are shown.
+  # When empty and error429DownloadDetails is false, a plain fallback message is shown.
+  error429Download: ""
+  # Set to false to suppress the auto-generated rate-limit info (limits table, peak hours, retry guidance)
+  # from the 429 body. Ignored when error429 is set and details are not needed alongside it.
+  error429Details: true
+  # Set to false to suppress the auto-generated download-quota info (quota table, peak hours, script hints)
+  # from the 429 download body.
+  error429DownloadDetails: true
   proxy:
     connectTimeout: 10s
     sendTimeout: 120s

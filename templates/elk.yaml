@@ -663,7 +663,7 @@ spec:
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: setup-elasticsearch-{{ include "kramerius.labels" . | sha256sum | trunc 8 }}
+  name: setup-elasticsearch-{{ .Values.elk.retentionDays | toString | sha256sum | trunc 8 }}
   namespace: {{ .Values.namespace }}
   labels:
     {{- include "kramerius.labels" . | nindent 4 }}
@@ -1011,6 +1011,8 @@ spec:
         metadata:
           labels:
             app.kubernetes.io/component: elk-slack-alerts
+          annotations:
+            checksum/config: {{ toYaml .Values.elk.slackAlerts | sha256sum }}
         spec:
           {{- include "kramerius.imagePullSecrets" . | nindent 10 }}
           restartPolicy: Never

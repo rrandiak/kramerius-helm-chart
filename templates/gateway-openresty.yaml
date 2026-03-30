@@ -1,4 +1,139 @@
 {{/* OpenResty edge gateway: curator/public routing + request/download quotas via lua_shared_dict (in-memory per pod) */}}
+
+{{/* Format a byte count as human-readable (e.g. 5.0 GB). Input: number. */}}
+{{- define "kramerius.fmtBytes" -}}
+{{- if ge (int64 .) (int64 1073741824) -}}{{ printf "%.1f GB" (divf . 1073741824) }}
+{{- else if ge (int64 .) (int64 1048576) -}}{{ printf "%.1f MB" (divf . 1048576) }}
+{{- else if ge (int64 .) (int64 1024) -}}{{ printf "%.1f KB" (divf . 1024) }}
+{{- else -}}{{ printf "%d B" (int64 .) }}
+{{- end -}}
+{{- end -}}
+
+{{/* Format an endpoint match pattern. Input: rule dict with pathPrefix/pathSuffix. */}}
+{{- define "kramerius.epName" -}}
+{{- $pre := .pathPrefix | default "/" -}}
+{{- $suf := .pathSuffix | default "" -}}
+{{- if $suf -}}{{ $pre }}*{{ $suf }}{{- else -}}{{ $pre }}{{- end -}}
+{{- end -}}
+
+{{/* Rich plain-text body for request rate limit 429s. Input: root context ($). */}}
+{{- define "kramerius.error429Body" -}}
+{{- $g := .Values.gateway -}}
+{{- $ph := $g.peakHours | default dict -}}
+429 Too Many Requests
+
+Rate limits are enforced per client IP. Rules are matched top-to-bottom;
+the first matching rule applies.
+{{- if $g.rateLimits }}
+
+Request rate limits:
+{{- range $g.rateLimits }}
+{{- $ep := include "kramerius.epName" . }}
+{{- if and $ph.enabled .peakMaxRequests .offPeakMaxRequests }}
+  {{ $ep }}
+      peak: {{ .peakMaxRequests }} req / {{ .windowSeconds }} s  |  off-peak: {{ .offPeakMaxRequests }} req / {{ .windowSeconds }} s
+{{- else if .maxRequests }}
+  {{ $ep }}   {{ .maxRequests }} req / {{ .windowSeconds }} s
+{{- end }}
+{{- end }}
+{{- end }}
+{{- if $ph.enabled }}
+
+Peak hours: {{ $ph.from }}:00-{{ $ph.to }}:00 (server local time).
+During peak hours, rules that define separate peak/off-peak values use the stricter limit.
+{{- end }}
+
+The Retry-After response header tells you how many seconds remain in the current
+window. Wait that long before retrying.
+{{- end -}}
+
+{{/* Rich plain-text body for download quota 429s. Input: root context ($). */}}
+{{- define "kramerius.error429DownloadBody" -}}
+{{- $g := .Values.gateway -}}
+{{- $ph := $g.peakHours | default dict -}}
+429 Download Quota Exceeded
+
+Download quotas are enforced per client IP. Rules are matched top-to-bottom;
+the first matching rule applies.
+{{- if $g.downloadLimits }}
+
+Download quotas:
+{{- range $g.downloadLimits }}
+{{- $ep := include "kramerius.epName" . }}
+{{- if and $ph.enabled .peakMaxBytes .offPeakMaxBytes }}
+  {{ $ep }}
+      peak: {{ include "kramerius.fmtBytes" .peakMaxBytes }} / {{ .windowSeconds }} s  |  off-peak: {{ include "kramerius.fmtBytes" .offPeakMaxBytes }} / {{ .windowSeconds }} s
+{{- else if .maxBytes }}
+  {{ $ep }}   {{ include "kramerius.fmtBytes" .maxBytes }} / {{ .windowSeconds }} s
+{{- end }}
+{{- end }}
+{{- end }}
+{{- if $ph.enabled }}
+
+Peak hours: {{ $ph.from }}:00-{{ $ph.to }}:00 (server local time).
+During peak hours, rules that define separate peak/off-peak values use the stricter limit.
+{{- end }}
+
+Handling 429 in download scripts:
+  1. Check the HTTP status code before consuming the response body.
+  2. On 429, read the Retry-After header and sleep that many seconds before retrying.
+  3. For chunked or streaming downloads, detect 429 early and abort the stream.
+
+  Shell (curl):
+    while true; do
+      status=$(curl -s -o /tmp/out -w "%{http_code}" "$URL")
+      if [ "$status" = "200" ]; then break
+      elif [ "$status" = "429" ]; then sleep 60
+      else echo "Error: $status" >&2; exit 1
+      fi
+    done
+
+  Python (requests):
+    import time, requests
+    while True:
+        r = requests.get(url, stream=True)
+        if r.status_code == 200:
+            break  # then consume r.iter_content(...)
+        if r.status_code == 429:
+            time.sleep(int(r.headers.get("Retry-After", 60)))
+        else:
+            r.raise_for_status()
+
+Your quota resets at the end of the current window.
+{{- end -}}
+
+{{/* Resolved 429 body: custom message and/or generated details, or plain fallback. Input: root ($). */}}
+{{- define "kramerius.resolve429" -}}
+{{- $g := .Values.gateway -}}
+{{- $custom := $g.error429 | default "" -}}
+{{- $details := ne $g.error429Details false -}}
+{{- if and (not $custom) (not $details) -}}
+Too Many Requests
+{{- else -}}
+{{- if $custom }}{{ $custom | trim }}{{ end -}}
+{{- if and $custom $details }}
+
+{{ end -}}
+{{- if $details }}{{ include "kramerius.error429Body" . | trim }}{{ end -}}
+{{- end -}}
+{{- end -}}
+
+{{/* Resolved 429 download body: custom message and/or generated details, or plain fallback. Input: root ($). */}}
+{{- define "kramerius.resolve429Download" -}}
+{{- $g := .Values.gateway -}}
+{{- $custom := $g.error429Download | default "" -}}
+{{- $details := ne $g.error429DownloadDetails false -}}
+{{- if and (not $custom) (not $details) -}}
+Download quota exceeded for this period. Try again later.
+{{- else -}}
+{{- if $custom }}{{ $custom | trim }}{{ end -}}
+{{- if and $custom $details }}
+
+{{ end -}}
+{{- if $details }}{{ include "kramerius.error429DownloadBody" . | trim }}{{ end -}}
+{{- end -}}
+{{- end -}}
+
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -10,9 +145,9 @@ metadata:
     app.kubernetes.io/component: gateway
 data:
   429.body: |
-{{ .Values.gateway.error429 | default "Too Many Requests" | nindent 4 }}
+{{ include "kramerius.resolve429" $ | nindent 4 }}
   429.download.body: |
-{{ .Values.gateway.error429Download | default "Download quota exceeded for this period. Try again later." | nindent 4 }}
+{{ include "kramerius.resolve429Download" $ | nindent 4 }}
 ---
 apiVersion: v1
 kind: ConfigMap
