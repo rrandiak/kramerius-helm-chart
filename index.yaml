@@ -3,7 +3,20 @@ entries:
   kramerius:
   - apiVersion: v2
     appVersion: 7.2.0
-    created: "2026-03-30T17:49:14.404070828Z"
+    created: "2026-04-07T12:28:47.457208301Z"
+    description: Kramerius 7 - digital library system
+    digest: bb267854d28f3ed465a1d2f90cd7ae6651893b52355231b578164f987f683b6c
+    maintainers:
+    - email: robert.randiak@mzk.cz
+      name: Randiak Robert
+    name: kramerius
+    type: application
+    urls:
+    - https://rrandiak.github.io/kramerius-helm-chart/kramerius-1.0.9.tgz
+    version: 1.0.9
+  - apiVersion: v2
+    appVersion: 7.2.0
+    created: "2026-04-07T12:28:47.454591531Z"
     description: Kramerius 7 - digital library system
     digest: 2e9bef7430ab2288c49d38e07c9d19fb7ddb9c98ab0877b4c1fd02969b76ce90
     maintainers:
@@ -16,7 +29,7 @@ entries:
     version: 1.0.8
   - apiVersion: v2
     appVersion: 7.2.0
-    created: "2026-03-30T17:49:14.401457113Z"
+    created: "2026-04-07T12:28:47.451444818Z"
     description: Kramerius 7 - digital library system
     digest: a9d4abf89e5c53a9956617fa4916e550320c5fb21ae4138c8ef613ce1c4c4eb6
     maintainers:
@@ -29,7 +42,7 @@ entries:
     version: 1.0.7
   - apiVersion: v2
     appVersion: 7.2.0
-    created: "2026-03-30T17:49:14.398848536Z"
+    created: "2026-04-07T12:28:47.44875925Z"
     description: Kramerius 7 - digital library system
     digest: 393ddda58853a991a9213000116ddfb1c6d6e5144316fbb05d29c660b5bbbf14
     maintainers:
@@ -42,7 +55,7 @@ entries:
     version: 1.0.6
   - apiVersion: v2
     appVersion: 7.2.0
-    created: "2026-03-30T17:49:14.395503749Z"
+    created: "2026-04-07T12:28:47.446241036Z"
     description: Kramerius 7 - digital library system
     digest: a203495584514b99150d5803759ea40b186a1f443f286fa8421b491fa95de4cc
     maintainers:
@@ -55,7 +68,7 @@ entries:
     version: 1.0.5
   - apiVersion: v2
     appVersion: 7.2.0
-    created: "2026-03-30T17:49:14.392946318Z"
+    created: "2026-04-07T12:28:47.442985489Z"
     description: Kramerius 7 - digital library system
     digest: 1405018ca0720ba1aa1a321339d7ebe8758679eaa6e99bb1354e96847e1e0b41
     maintainers:
@@ -68,7 +81,7 @@ entries:
     version: 1.0.4
   - apiVersion: v2
     appVersion: 7.2.0
-    created: "2026-03-30T17:49:14.390082666Z"
+    created: "2026-04-07T12:28:47.440423583Z"
     description: Kramerius 7 - digital library system
     digest: 9ec436578b6ac902b7a9351f32a21ee377923ada85746233eac7114c4d4d3c71
     maintainers:
@@ -81,7 +94,7 @@ entries:
     version: 1.0.3
   - apiVersion: v2
     appVersion: 7.2.0
-    created: "2026-03-30T17:49:14.386759783Z"
+    created: "2026-04-07T12:28:47.437857158Z"
     description: Kramerius 7 - digital library system
     digest: 02895a5846fd07651d522acee622c1395baa3d6189e9a2d39242006a9060c4c4
     maintainers:
@@ -92,4 +105,4 @@ entries:
     urls:
     - https://rrandiak.github.io/kramerius-helm-chart/kramerius-1.0.2.tgz
     version: 1.0.2
-generated: "2026-03-30T17:49:14.384070787Z"
+generated: "2026-04-07T12:28:47.435159106Z"
