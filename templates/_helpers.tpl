@@ -278,6 +278,8 @@ Comma-joined list of import mount paths from storages.imports.
 {{- if $importDirs }}
 {{- $importPart = include "kramerius.configurationProperties.section" (dict "title" "Import" "map" (dict "import.directory" $importDirs)) | trim }}
 {{- end }}
+{{- $applicationUrl := printf "https://%s/search" $root.Values.ingress.host }}
+{{- $appPart := include "kramerius.configurationProperties.section" (dict "title" "Application" "map" (dict "applicationUrl" $applicationUrl)) | trim }}
 {{- $parts := compact (list
   (include "kramerius.configurationProperties.section" (dict "title" "Akubra" "map" $akubra))
   (include "kramerius.configurationProperties.section" (dict "title" "Solr" "map" $solr))
@@ -285,6 +287,7 @@ Comma-joined list of import mount paths from storages.imports.
   $krameriusJdbcPart
   $processManagerPart
   $importPart
+  $appPart
 ) }}
 {{- join "\n" $parts }}
 {{- end }}
