@@ -1,0 +1,67 @@
+{{- if eq (include "kramerius.observability.enabled" .) "true" }}
+{{- $h := ((.Values.observability | default dict).hyperdx | default dict) }}
+{{- $ns := .Values.namespace }}
+{{- $frontendUrl := "" }}
+{{- with ((.Values.networking | default dict).hyperdx | default dict).host | default "" | trim }}
+{{- $frontendUrl = printf "https://%s" . }}
+{{- end }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "kramerius.observability.hyperdxName" . }}
+  namespace: {{ $ns }}
+  labels:
+    {{- include "kramerius.labels" . | nindent 4 }}
+    app.kubernetes.io/name: {{ include "kramerius.observability.hyperdxName" . }}
+    app.kubernetes.io/component: observability
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "kramerius.observability.hyperdxName" . }}
+      app.kubernetes.io/component: observability
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "kramerius.observability.hyperdxName" . }}
+        app.kubernetes.io/component: observability
+    spec:
+      {{- if (($h.image | default dict).pullSecret) }}
+      imagePullSecrets:
+        - name: {{ (($h.image | default dict).pullSecret) | quote }}
+      {{- end }}
+      containers:
+        - name: hyperdx
+          image: {{ (default "hyperdx/hyperdx" ($h.image | default dict).repository) }}:{{ (default "latest" ($h.image | default dict).tag) }}
+          imagePullPolicy: {{ default "IfNotPresent" (($h.image | default dict).pullPolicy) }}
+          ports:
+            - containerPort: 8080
+              name: http
+          env:
+            - name: MONGO_URI
+              value: {{ printf "mongodb://mongodb.%s.svc.cluster.local:27017/hyperdx" $ns | quote }}
+            - name: CLICKHOUSE_HOST
+              value: {{ printf "%s.%s.svc.cluster.local" (include "kramerius.observability.clickhouseName" .) $ns | quote }}
+            - name: CLICKHOUSE_PORT
+              value: "9000"
+            - name: CLICKHOUSE_USER
+              value: {{ ((.Values.observability | default dict).clickhouse | default dict).user | default "" | quote }}
+            - name: CLICKHOUSE_PASSWORD
+              value: {{ ((.Values.observability | default dict).clickhouse | default dict).password | default "" | quote }}
+            - name: CLICKHOUSE_DB
+              value: "default"
+            - name: CLICKHOUSE_PROTOCOL
+              value: "native"
+            - name: HYPERDX_API_KEY
+              value: {{ $h.apiKey | default "" | quote }}
+            - name: FRONTEND_URL
+              value: {{ $frontendUrl | quote }}
+            - name: NEXT_PUBLIC_SERVER_URL
+              value: {{ $frontendUrl | quote }}
+            - name: SERVER_URL
+              value: "http://localhost:8000"
+            - name: AGGREGATOR_API_URL
+              value: "http://localhost:8001"
+          resources:
+            {{- toYaml ($h.resources | default dict) | nindent 12 }}
+{{- end }}

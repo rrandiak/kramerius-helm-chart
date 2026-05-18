@@ -1,0 +1,46 @@
+{{- if and (eq (include "kramerius.observability.enabled" .) "true") (eq (include "kramerius.observability.otelCollectorEnabled" .) "true") }}
+{{- $collector := ((((.Values.observability | default dict).otel | default dict).collector) | default dict) }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "kramerius.observability.otelCollectorName" . }}
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "kramerius.labels" . | nindent 4 }}
+    app.kubernetes.io/name: {{ include "kramerius.observability.otelCollectorName" . }}
+    app.kubernetes.io/component: observability
+spec:
+  replicas: {{ default 1 $collector.replicas }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "kramerius.observability.otelCollectorName" . }}
+      app.kubernetes.io/component: observability
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "kramerius.observability.otelCollectorName" . }}
+        app.kubernetes.io/component: observability
+    spec:
+      {{- if (($collector.image | default dict).pullSecret) }}
+      imagePullSecrets:
+        - name: {{ (($collector.image | default dict).pullSecret) | quote }}
+      {{- end }}
+      containers:
+        - name: otel-collector
+          image: {{ (default "otel/opentelemetry-collector-contrib" ($collector.image | default dict).repository) }}:{{ (default "0.104.0" ($collector.image | default dict).tag) }}
+          imagePullPolicy: {{ default "IfNotPresent" (($collector.image | default dict).pullPolicy) }}
+          args: ["--config=/etc/otel/collector.yaml"]
+          ports:
+            - name: otlp-grpc
+              containerPort: 4317
+          volumeMounts:
+            - name: collector-config
+              mountPath: /etc/otel
+              readOnly: true
+          resources:
+            {{- toYaml ($collector.resources | default dict) | nindent 12 }}
+      volumes:
+        - name: collector-config
+          configMap:
+            name: {{ include "kramerius.observability.otelCollectorName" . }}-config
+{{- end }}

@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Gateway management</title>
+  <style>{{!water_css}}</style>
+  <style>{{!dashboard_css}}</style>
+</head>
+<body>
+
+<nav>
+  <a href="{{browser_root}}?tab=rules" class="{{'active' if active_tab=='rules' else ''}}">Access rules</a>
+  <a href="{{browser_root}}?tab=users" class="{{'active' if active_tab=='users' else ''}}">Users</a>
+  <a href="{{browser_root}}?tab=bans"  class="{{'active' if active_tab=='bans'  else ''}}">Bans</a>
+  <span class="right muted">Gateway management</span>
+</nav>
+
+% if flash_error:
+<p class="flash-err">{{flash_error}}</p>
+% end
+% if flash_ok:
+<p class="flash-ok">{{flash_ok}}</p>
+% end
+
+% if active_tab == 'rules':
+
+<form method="post" action="{{browser_root}}/ui/peak/save" class="peak-form"
+      onsubmit="var f=this.peak_from,t=this.peak_to;if(f.value===t.value){t.setCustomValidity('From and To must differ');return false;}t.setCustomValidity('');return true">
+  <strong>Peak hours</strong>
+  <label>From<input type="number" name="peak_from" min="0" max="23" value="{{state.peak.from_hour}}" style="width:4rem" required/></label>
+  <label>To<input type="number" name="peak_to"     min="0" max="23" value="{{state.peak.to_hour}}"   style="width:4rem" required/></label>
+  <button type="submit">Save</button>
+  <p class="muted peak-hint">Local wall clock; overnight ranges (e.g. 22–6) supported.</p>
+</form>
+
+<p>
+  <form action="{{browser_root}}/ui/rule/add" method="post" class="inline-form">
+    <button type="submit" id="btn-add-rule"{{!' disabled' if open_index >= 0 else ''}}>+ Add rule</button>
+  </form>
+</p>
+
+% if state.rules:
+<div class="rules-list">
+  % for i, rule in enumerate(state.rules):
+  <div class="rule-stack">
+    <article class="rule-card">
+      <header class="rule-card-header">
+        <h3 class="rule-card-title">{{rule.name}}</h3>
+        <a href="#" class="rule-card-edit" onclick="openEdit('rule-{{i}}');return false">Edit</a>
+      </header>
+      <section class="rule-card-section">
+        <h4 class="rule-card-label">Endpoints</h4>
+        <div class="chip-row">
+          % if rule.endpoints:
+            % for ep in sorted(rule.endpoints):
+            <span class="chip chip-endpoint"><code>{{ep}}</code></span>
+            % end
+          % else:
+            <span class="muted">—</span>
+          % end
+        </div>
+      </section>
+      <section class="rule-card-section">
+        <h4 class="rule-card-label">Users</h4>
+        <div class="chip-row">
+          % if rule.user_refs:
+            % for ref in sorted(rule.user_refs):
+            <span class="chip chip-user">{{ref}}</span>
+            % end
+          % else:
+            <span class="chip chip-all">All users</span>
+          % end
+        </div>
+      </section>
+      <section class="rule-card-section">
+        <h4 class="rule-card-label">Rate limit</h4>
+        <div class="limit-split">
+          <div class="limit-block">
+            <span class="limit-kind">Peak</span>
+            <p class="limit-one-line"><strong>{{rule.rl_peak}}</strong> req <span class="limit-sep muted">·</span> window <strong>{{rule.rl_window}}</strong> s</p>
+          </div>
+          <div class="limit-block">
+            <span class="limit-kind">Off-peak</span>
+            <p class="limit-one-line"><strong>{{rule.rl_off}}</strong> req <span class="limit-sep muted">·</span> window <strong>{{rule.rl_window}}</strong> s</p>
+          </div>
+        </div>
+      </section>
+      <section class="rule-card-section">
+        <h4 class="rule-card-label">Download limit</h4>
+        <div class="limit-split">
+          <div class="limit-block">
+            <span class="limit-kind">Peak</span>
+            <p class="limit-one-line"><strong>{{!fmt_bytes(rule.dl_peak)}}</strong> <span class="limit-sep muted">·</span> window <strong>{{rule.dl_window}}</strong> s</p>
+          </div>
+          <div class="limit-block">
+            <span class="limit-kind">Off-peak</span>
+            <p class="limit-one-line"><strong>{{!fmt_bytes(rule.dl_off)}}</strong> <span class="limit-sep muted">·</span> window <strong>{{rule.dl_window}}</strong> s</p>
+          </div>
+        </div>
+      </section>
+    </article>
+    <div id="rule-{{i}}" class="rule-edit edit-row"{{!' style="display:block"' if open_index==i and active_tab=='rules' else ''}}>
+      <form method="post" action="{{browser_root}}/ui/rule/save">
+        <input type="hidden" name="index" value="{{i}}"/>
+
+        <label>Rule name
+          <input type="text" name="rule_name" value="{{rule.name}}" required/>
+        </label>
+
+        % if endpoint_grouped:
+        <details>
+          <summary>Endpoints</summary>
+          % for section, paths in endpoint_grouped:
+          <p><strong>{{section}}</strong></p>
+          % for ep in paths:
+          <label><input type="checkbox" name="endpoints" value="{{ep}}" {{'checked' if ep in rule.endpoints else ''}}/> <code>{{ep}}</code></label><br/>
+          % end
+          % end
+        </details>
+        % end
+
+        % if state.users:
+        <details>
+          <summary>Users</summary>
+          % for u in state.users:
+          <label><input type="checkbox" name="user_refs" value="{{u.name}}" {{'checked' if u.name in rule.user_refs else ''}}/> {{u.name}}</label><br/>
+          % end
+        </details>
+        % end
+
+        <fieldset>
+          <legend>Rate limit</legend>
+          <label>Window <input type="number" name="rl_window" value="{{rule.rl_window}}" min="1" required/> s</label>
+          <label>Peak max <input type="number" name="rl_peak" value="{{rule.rl_peak}}" min="1" required/> req</label>
+          <label>Off max <input type="number" name="rl_off" value="{{rule.rl_off}}" min="1" required/> req</label>
+        </fieldset>
+
+        <fieldset>
+          <legend>Download limit</legend>
+          <label>Window <input type="number" name="dl_window" value="{{rule.dl_window}}" min="1" required/> s</label>
+          <label>Peak max
+            <input type="number" class="dl-display" step="any" min="0" required/>
+            <select class="dl-unit">
+              <option value="1">B</option>
+              <option value="1024">KiB</option>
+              <option value="1048576">MiB</option>
+              <option value="1073741824">GiB</option>
+            </select>
+            <input type="hidden" name="dl_peak" class="dl-bytes" value="{{rule.dl_peak}}"/>
+          </label>
+          <label>Off max
+            <input type="number" class="dl-display" step="any" min="0" required/>
+            <select class="dl-unit">
+              <option value="1">B</option>
+              <option value="1024">KiB</option>
+              <option value="1048576">MiB</option>
+              <option value="1073741824">GiB</option>
+            </select>
+            <input type="hidden" name="dl_off" class="dl-bytes" value="{{rule.dl_off}}"/>
+          </label>
+        </fieldset>
+
+        <div class="edit-actions">
+          <button type="submit">Save rule</button>
+          <a href="#" onclick="closeEdit('rule-{{i}}');return false">Cancel</a>
+          <button type="button" class="link-btn edit-remove"
+                  onclick="if(confirm('Remove rule {{rule.name}}?'))this.closest('.rule-edit').querySelector('.remove-form').submit()">Remove «{{rule.name}}»</button>
+        </div>
+      </form>
+      <form method="post" action="{{browser_root}}/ui/rule/remove" class="remove-form">
+        <input type="hidden" name="index" value="{{i}}"/>
+      </form>
+    </div>
+  </div>
+  % end
+</div>
+% else:
+<p class="muted">No rules yet — add one above.</p>
+% end
+
+% elif active_tab == 'users':
+
+<p>
+  <form action="{{browser_root}}/ui/user/add" method="post" class="inline-form">
+    <button type="submit" id="btn-add-user"{{!' disabled' if open_index >= 0 else ''}}>+ Add user profile</button>
+  </form>
+</p>
+
+% if state.users:
+<div class="table-wrap">
+<table>
+  <thead>
+    <tr><th>Name</th><th>IP / CIDR</th><th>Username</th><th>HTTP headers</th><th></th></tr>
+  </thead>
+  <tbody>
+  % for i, user in enumerate(state.users):
+    <tr>
+      <td><strong class="nowrap">{{user.name}}</strong></td>
+      <td><code>{{user.ip or '—'}}</code></td>
+      <td class="nowrap">{{user.username or '—'}}</td>
+      <td>
+        % for k, v in user.headers.items():
+        <code>{{k}}: {{v}}</code><br/>
+        % end
+        % if not user.headers:
+        <span class="muted">—</span>
+        % end
+      </td>
+      <td><a href="#" onclick="openEdit('user-{{i}}');return false">Edit</a></td>
+    </tr>
+    <tr id="user-{{i}}" class="edit-row"{{!' style="display:table-row"' if open_index==i and active_tab=='users' else ''}}>
+      <td colspan="5">
+        <form method="post" action="{{browser_root}}/ui/user/save" class="user-edit-form">
+          <input type="hidden" name="index" value="{{i}}"/>
+          <div class="user-edit-section">
+            <label class="user-edit-heading" for="user-{{i}}-name">Name</label>
+            <input id="user-{{i}}-name" type="text" name="profile_name" value="{{user.name}}" required/>
+          </div>
+          <div class="user-edit-section">
+            <label class="user-edit-heading" for="user-{{i}}-ip">IP / CIDR</label>
+            <input id="user-{{i}}-ip" type="text" name="profile_ip" value="{{user.ip or ''}}" placeholder="203.0.113.0/24"/>
+          </div>
+          <div class="user-edit-section">
+            <label class="user-edit-heading" for="user-{{i}}-username">Username</label>
+            <input id="user-{{i}}-username" type="text" name="profile_username" value="{{user.username or ''}}"/>
+          </div>
+          <div class="user-edit-section">
+            <label class="user-edit-heading" for="user-{{i}}-headers">HTTP headers</label>
+            <p class="user-edit-hint muted">One per line: <code>Header-Name: value</code></p>
+            <textarea id="user-{{i}}-headers" name="headers" rows="4" placeholder="X-Forwarded-User: alice">{{headers_text(user.headers)}}</textarea>
+          </div>
+          <div class="edit-actions">
+            <button type="submit">Save profile</button>
+            <a href="#" onclick="closeEdit('user-{{i}}');return false">Cancel</a>
+            <button type="button" class="link-btn edit-remove"
+                    onclick="if(confirm('Remove profile {{user.name}}?'))this.closest('tr.edit-row').querySelector('.remove-form').submit()">Remove «{{user.name}}»</button>
+          </div>
+        </form>
+        <form method="post" action="{{browser_root}}/ui/user/remove" class="remove-form">
+          <input type="hidden" name="index" value="{{i}}"/>
+        </form>
+      </td>
+    </tr>
+  % end
+  </tbody>
+</table>
+</div>
+% else:
+<p class="muted">No user profiles yet.</p>
+% end
+
+% elif active_tab == 'bans':
+
+<form method="post" action="{{browser_root}}/ui/bans/add"
+      style="display:flex;gap:1rem;align-items:flex-end;flex-wrap:wrap;margin-bottom:1.5rem">
+  <label>IP / CIDR
+    <input type="text" name="target" required placeholder="203.0.113.4" style="width:12rem"/>
+  </label>
+  <label>Reason (≥ 4 chars)
+    <input type="text" name="reason" required minlength="4" placeholder="Abuse note" style="width:20rem"/>
+  </label>
+  <button type="submit">Add ban</button>
+</form>
+
+<h3>Active bans</h3>
+% if state.bans:
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Target</th><th>Reason</th><th class="nowrap">Since</th><th></th></tr></thead>
+  <tbody>
+  % for b in state.bans:
+  <tr>
+    <td><code>{{b.target}}</code></td>
+    <td>{{b.reason}}</td>
+    <td class="nowrap"><time class="local-time" datetime="{{b.banned_at}}">{{b.banned_at}}</time></td>
+    <td>
+      <form method="post" action="{{browser_root}}/ui/bans/delete" class="inline-form">
+        <input type="hidden" name="target" value="{{b.target}}"/>
+        <button type="submit" class="link-btn">Remove</button>
+      </form>
+    </td>
+  </tr>
+  % end
+  </tbody>
+</table>
+</div>
+% else:
+<p class="muted">No active bans.</p>
+% end
+
+<h3>Previously banned</h3>
+% if state.removed_bans:
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Target</th><th>Reason</th><th class="nowrap">Banned</th><th class="nowrap">Removed</th></tr></thead>
+  <tbody>
+  % for b in state.removed_bans:
+  <tr>
+    <td><code>{{b.target}}</code></td>
+    <td>{{b.reason}}</td>
+    <td class="nowrap"><time class="local-time" datetime="{{b.banned_at}}">{{b.banned_at}}</time></td>
+    <td class="nowrap"><time class="local-time" datetime="{{b.removed_at}}">{{b.removed_at}}</time></td>
+  </tr>
+  % end
+  </tbody>
+</table>
+</div>
+% else:
+<p class="muted">No removed bans.</p>
+% end
+
+% end
+
+<script>
+(function () {
+  function _addBtn(id) {
+    return document.getElementById('btn-add-' + id.split('-')[0]);
+  }
+  function focusFirstInput(el) {
+    if (!el) return;
+    el.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+    var target = el.querySelector(
+      'input:not([type="hidden"]):not([disabled]), textarea:not([disabled]), select:not([disabled])'
+    );
+    if (!target) return;
+    target.focus();
+    if (target.select && (target.tagName === 'TEXTAREA' || target.type === 'text' || target.type === 'number')) {
+      target.select();
+    }
+  }
+  function openEdit(id) {
+    document.querySelectorAll('.edit-row').forEach(function (r) { r.style.display = 'none'; });
+    var el = document.getElementById(id);
+    el.style.display = el.tagName === 'TR' ? 'table-row' : 'block';
+    var b = _addBtn(id); if (b) b.disabled = true;
+    focusFirstInput(el);
+  }
+  function closeEdit(id) {
+    document.getElementById(id).style.display = 'none';
+    var b = _addBtn(id); if (b) b.disabled = false;
+  }
+  window.openEdit  = openEdit;
+  window.closeEdit = closeEdit;
+
+  // ── Download limit unit pickers ────────────────────────────────
+  var DL_UNITS = [
+    { mult: 1073741824, label: 'GiB' },
+    { mult: 1048576,    label: 'MiB' },
+    { mult: 1024,       label: 'KiB' },
+    { mult: 1,          label: 'B'   },
+  ];
+  function dlFmt(bytes, mult) {
+    var v = bytes / mult;
+    return v % 1 === 0 ? String(v) : v.toFixed(3).replace(/\.?0+$/, '');
+  }
+  function dlBestUnit(bytes) {
+    return DL_UNITS.find(function (u) { return bytes >= u.mult; }) || DL_UNITS[DL_UNITS.length - 1];
+  }
+  document.querySelectorAll('.rule-edit').forEach(function (panel) {
+    panel.querySelectorAll('.dl-bytes').forEach(function (hidden) {
+      var lbl   = hidden.closest('label');
+      var disp  = lbl.querySelector('.dl-display');
+      var sel   = lbl.querySelector('.dl-unit');
+      var bytes = parseInt(hidden.value, 10) || 0;
+      var best  = dlBestUnit(bytes);
+      sel.value  = best.mult;
+      disp.value = dlFmt(bytes, best.mult);
+      sel.dataset.prev = String(best.mult);
+      sel.addEventListener('change', function () {
+        var oldBytes = Math.round((parseFloat(disp.value) || 0) * parseInt(sel.dataset.prev, 10));
+        sel.dataset.prev = sel.value;
+        disp.value = dlFmt(oldBytes, parseInt(sel.value, 10));
+      });
+    });
+    panel.querySelector('form').addEventListener('submit', function () {
+      panel.querySelectorAll('.dl-bytes').forEach(function (hidden) {
+        var lbl  = hidden.closest('label');
+        var disp = lbl.querySelector('.dl-display');
+        var sel  = lbl.querySelector('.dl-unit');
+        hidden.value = Math.round((parseFloat(disp.value) || 0) * parseInt(sel.value, 10));
+      });
+    });
+  });
+
+  document.querySelectorAll('time.local-time').forEach(function (el) {
+    var d = new Date(el.getAttribute('datetime'));
+    if (isNaN(d)) return;
+    var p = function (n) { return String(n).padStart(2, '0'); };
+    el.textContent = d.getFullYear() + '/' + p(d.getMonth()+1) + '/' + p(d.getDate())
+                   + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+  });
+
+  var initiallyOpen = null;
+  document.querySelectorAll('.edit-row').forEach(function (el) {
+    if (!initiallyOpen && window.getComputedStyle(el).display !== 'none') initiallyOpen = el;
+  });
+  focusFirstInput(initiallyOpen);
+})();
+</script>
+
+</body>
+</html>

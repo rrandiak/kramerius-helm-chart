@@ -1,0 +1,45 @@
+{{/* Worker groups — ConfigMap per group (configuration.properties, mail.properties + optional server.xml/lp.xml) */}}
+{{/* Validate unique worker group names */}}
+{{- $seenNames := list }}
+{{- range .Values.workerGroups }}
+  {{- if has .name $seenNames }}
+    {{- fail (printf "workerGroups: duplicate name %q — each worker group must have a unique name" .name) }}
+  {{- end }}
+  {{- $seenNames = append $seenNames .name }}
+{{- end }}
+{{- range .Values.workerGroups }}
+{{- $group := . }}
+{{- $root := $ }}
+{{- if and (($group.config | default dict).configurationPropertiesOverride | default "" | trim) (($group.config | default dict).configurationPropertiesExtra | default "" | trim) }}
+  {{- fail (printf "workerGroups[%s].config: configurationPropertiesOverride and configurationPropertiesExtra are mutually exclusive" $group.name) }}
+{{- end }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: worker-{{ $group.name }}-config
+  namespace: {{ $root.Values.namespace }}
+  labels:
+    {{- include "kramerius.labels" $root | nindent 4 }}
+    app.kubernetes.io/name: worker-{{ $group.name }}
+data:
+  configuration.properties: |
+    {{- if (($group.config | default dict).configurationPropertiesOverride | default "") | trim }}
+    {{- $group.config.configurationPropertiesOverride | nindent 4 }}
+    {{- else }}
+    {{- include "kramerius.workers.configurationProperties" (dict "root" $root "group" $group) | nindent 4 }}
+    {{- end }}
+  mail.properties: |
+    {{- include "kramerius.workers.mailProperties" (dict "root" $root "group" $group) | nindent 4 }}
+  {{- $serverXml := include "kramerius.workers.serverXml" (dict "root" $root "group" $group) | trim }}
+  {{- if $serverXml }}
+  server.xml: |
+    {{- $serverXml | nindent 4 }}
+  {{- end }}
+  lp.xml: |
+    {{- include "kramerius.workers.lpXml" (dict "root" $root "group" $group) | nindent 4 }}
+  {{- range $i, $c := $group.customConfigs | default list }}
+  custom-config-{{ $i }}: |
+    {{- $c.content | nindent 4 }}
+  {{- end }}
+{{- end }}

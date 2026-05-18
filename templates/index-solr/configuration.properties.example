@@ -1,0 +1,22 @@
+## Solr
+
+# Main cores
+solrSearchHost=http://solr.k7-solr-cloud.svc.cluster.local:8983/solr/search_v22
+solrSearch.useCompositeId=true
+solrProcessingHost=http://haproxy.k7-solr-cloud.svc.cluster.local:8983/solr/processing
+k7.log.solr.point=http://solr.k7-solr-cloud.svc.cluster.local:8983/solr/logs
+
+# Optional cores
+solrSdnntHost=http://solr.k7-solr-cloud.svc.cluster.local:8983/solr/sdnnt-sync
+api.monitor.point=http://solr.k7-solr-cloud.svc.cluster.local:8983/solr/monitor
+api.monitor.threshold=1000
+
+# Optional (CDK) cores
+solrUpdatesHost=http://cloud-solr.solr:8983/solr/updates_v1
+solrReharvestHost=http://cloud-solr.solr:8983/solr/reharvest_v1
+
+solr.apache.client.max_connections=200
+solr.apache.client.max_per_route=100
+solr.apache.client.connect_timeout=120000
+solr.apache.client.response_timeout=120000
+

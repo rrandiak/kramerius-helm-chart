@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gateway-openresty-errors
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "kramerius.labels" . | nindent 4 }}
+    {{- include "kramerius.gateway.matchLabels" . | nindent 4 }}
+data:
+  429.body: |
+{{ include "kramerius.gateway.render429Template" (dict "root" . "source" "files/gateway/429.body") | nindent 4 }}
+  429.titles: |
+{{ .Files.Get "files/gateway/429.titles" | nindent 4 }}
+

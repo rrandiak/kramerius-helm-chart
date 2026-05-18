@@ -1,0 +1,195 @@
+# CDK deployment preset
+#
+# Deployments where digital objects are managed externally (no Akubra storage).
+# Adds Cache DB for HTTP response caching. Workers use CDK-specific image.
+# No Import or Media storage.
+#
+# Usage:
+#   helm upgrade --install kramerius . \
+#     -f values.yaml \
+#     -f values.cdk.yaml \
+#     -f environments/<site>/override.yaml
+
+namespace: kramerius
+
+# ---------------------------------------------------------------------------
+# Networking (merges with values.yaml — set hosts / TLS / annotations per site)
+#
+# CDK: the users database is often replicated between two locations (logical replication).
+# Ingress/Gateway below only handles HTTP(S) to the app — it does NOT expose PostgreSQL.
+# You must arrange platform networking (VPN, VPC peering, private endpoints, firewall rules)
+# so each site’s Postgres can reach the other on the replication port (typically 5432).
+# See templates/networking/README.md — “CDK cross-site users database”.
+# ---------------------------------------------------------------------------
+networking:
+  enabled: true
+  mode: ingress
+  className: nginx
+  api:
+    host: "k7.example.com"
+    tlsSecretName: kramerius-gateway-tls
+    annotations:
+      cert-manager.io/cluster-issuer: letsencrypt
+      nginx.ingress.kubernetes.io/real-ip-header: X-Forwarded-For
+  admin:
+    host: "admin.k7.example.com"
+    tlsSecretName: kramerius-admin-tls
+    annotations:
+      cert-manager.io/cluster-issuer: letsencrypt
+      nginx.ingress.kubernetes.io/real-ip-header: X-Forwarded-For
+  processManager:
+    host: "process-manager.k7.example.com"
+    tlsSecretName: kramerius-process-manager-tls
+    annotations:
+      cert-manager.io/cluster-issuer: letsencrypt
+      nginx.ingress.kubernetes.io/real-ip-header: X-Forwarded-For
+
+# ---------------------------------------------------------------------------
+# Gateway
+# ---------------------------------------------------------------------------
+gateway:
+  curatorPathPrefix: "/search/api/admin/"
+  trustedProxyCidrs:
+    - 10.0.0.0/8
+    - 172.16.0.0/12
+    - 192.168.0.0/16
+
+# ---------------------------------------------------------------------------
+# Kramerius Public
+# ---------------------------------------------------------------------------
+krameriusPublic:
+  replicas: 1
+  image:
+    repository: ceskaexpedice/kramerius
+    tag: "7.2.0"
+
+# ---------------------------------------------------------------------------
+# Kramerius Curator
+# ---------------------------------------------------------------------------
+krameriusCurator:
+  replicas: 1
+  image:
+    repository: ceskaexpedice/kramerius
+    tag: "7.2.0"
+
+# ---------------------------------------------------------------------------
+# Process Manager
+# ---------------------------------------------------------------------------
+processManager:
+  image:
+    repository: ceskaexpedice/process-manager
+    tag: "1.5"
+
+# ---------------------------------------------------------------------------
+# Workers (CDK image)
+# ---------------------------------------------------------------------------
+workersDefaults:
+  image:
+    repository: ceskaexpedice/cdk-worker
+    tag: "7.2.0"
+
+workerGroups:
+  - name: cdk
+    replicas: 1
+    workerLoopSleepSecs: 10
+    workerLoopPrintSecs: 30
+    catalinaOptsMemory: "-Xms512M -Xmx2G"
+    config:
+      lpXml: ""
+    resources:
+      requests:
+        cpu: 250m
+        memory: 640Mi
+      limits:
+        cpu: 1500m
+        memory: 3Gi
+
+# ---------------------------------------------------------------------------
+# Database (CNPG — requires CNPG operator in the cluster)
+# Includes Cache DB (CDK-specific). No Akubra, Import, or Media storage.
+# ---------------------------------------------------------------------------
+databases:
+  mode: cnpg
+
+  kramerius:
+    jdbc:
+      database: kramerius
+      username: kramerius
+      password: CHANGE_ME
+
+  users:
+    jdbc:
+      database: users
+      username: users
+      password: CHANGE_ME
+
+  process:
+    jdbc:
+      database: process
+      username: process
+      password: CHANGE_ME
+
+  cache:
+    jdbc:
+      database: cache
+      username: cache
+      password: CHANGE_ME
+
+# ---------------------------------------------------------------------------
+# Storage — no Akubra, Import, or Media in CDK
+# ---------------------------------------------------------------------------
+akubraConfig:
+  enabled: false
+
+storages:
+  akubra-object-store: {}
+  akubra-datastream-store: {}
+  # imports, imageserver, audioserver, pdfserver are not used in CDK.
+
+# ---------------------------------------------------------------------------
+# External: Keycloak
+# ---------------------------------------------------------------------------
+auth:
+  keycloak:
+    realm: kramerius
+    authServerUrl: https://keycloak.example.com/auth/
+    resource: krameriusClient
+    secret: CHANGE_ME
+
+# ---------------------------------------------------------------------------
+# External: Solr
+# ---------------------------------------------------------------------------
+solrConfig:
+  search: http://solr.example.com:8983/solr/kramerius
+  searchUseComposite: true
+  processing: http://solr.example.com:8983/solr/kramerius_processing
+  sdnnt: http://solr.example.com:8983/solr/sdnnt
+  updates: http://solr.example.com:8983/solr/kramerius_updates
+  reharvest: http://solr.example.com:8983/solr/kramerius_reharvest
+
+# Lock Server uses chart defaults.
+
+# ---------------------------------------------------------------------------
+# CDK mode — enables cdk.server.mode and cache DB; workers use CDK image.
+# ---------------------------------------------------------------------------
+cdk:
+  enabled: true
+  # server.mode is set to true automatically when cdk.enabled; override only to force false.
+  # server:
+  #   mode: true
+  # Apache HttpClient tuning for CDK forward requests.
+  # forwardClient:
+  #   maxConnections: 150
+  #   maxPerRoute: 100
+  # Shibboleth forward headers (space-separated list).
+  # shibbolethForwardHeaders: ""
+  # Remote Kramerius collection sources.
+  # collections:
+  #   sources:
+  #     knav:
+  #       baseurl: https://kramerius.lib.cas.cz/search
+  #       username: xxx
+  #       pswd: xxx
+  #       api: v7
+  #       forwardurl: http://knav-tunnel.cdk-proxy.svc.cluster.local/search
+  #       licenses: true

@@ -1,4 +1,7 @@
-.git/
-.github/
-.gitignore
-gh-pages/
+.run/
+dev/
+files/*/README.md
+scripts/
+templates/*/README.md
+templates/*/*.example
+templates/*/values.part*.yaml

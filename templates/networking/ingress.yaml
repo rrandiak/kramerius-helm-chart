@@ -1,0 +1,175 @@
+{{/* === API (public gateway) === */}}
+{{- if (include "kramerius.networking.ingressEnabled" .) }}
+{{- include "kramerius.networking.validateEdgeHosts" . -}}
+{{- $net := .Values.networking | default dict -}}
+{{- $api := $net.api | default dict -}}
+{{- $pm := $net.processManager | default dict -}}
+{{- $gm := $net.gatewayManager | default dict -}}
+{{- $ad := $net.admin | default dict -}}
+{{- $hx := $net.hyperdx | default dict -}}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: kramerius-gateway
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "kramerius.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ingress-gateway
+  {{- with $api.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  ingressClassName: {{ $net.className }}
+  tls:
+    - hosts:
+        - {{ $api.host | quote }}
+      secretName: {{ $api.tlsSecretName }}
+  rules:
+    - host: {{ $api.host | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: gateway-openresty
+                port:
+                  name: http
+
+{{/* === Gateway management client === */}}
+{{- if (.Values.gateway.managementClient.enabled | default false) }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: kramerius-gateway-manager
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "kramerius.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ingress-gateway-manager
+  {{- with $gm.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  ingressClassName: {{ $net.className }}
+  tls:
+    - hosts:
+        - {{ $gm.host | quote }}
+      secretName: {{ $gm.tlsSecretName }}
+  rules:
+    - host: {{ $gm.host | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: gateway-management-client
+                port:
+                  name: http
+{{- end }}
+
+{{/* === Admin client === */}}
+{{- if (.Values.adminClient.enabled | default false) }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: kramerius-admin
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "kramerius.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ingress-admin
+  {{- with $ad.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  ingressClassName: {{ $net.className }}
+  tls:
+    - hosts:
+        - {{ $ad.host | quote }}
+      secretName: {{ $ad.tlsSecretName }}
+  rules:
+    - host: {{ $ad.host | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: admin-client
+                port:
+                  name: http
+{{- end }}
+
+{{/* === Process Manager (host required whenever ingress networking is on) === */}}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: kramerius-process-manager
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "kramerius.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ingress-process-manager
+  {{- with $pm.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  ingressClassName: {{ $net.className }}
+  tls:
+    - hosts:
+        - {{ $pm.host | quote }}
+      secretName: {{ $pm.tlsSecretName }}
+  rules:
+    - host: {{ $pm.host | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: process-manager
+                port:
+                  name: http
+
+{{/* === HyperDX === */}}
+{{- if (.Values.observability.enabled | default false) }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: kramerius-hyperdx
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "kramerius.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ingress-hyperdx
+  {{- with $hx.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  ingressClassName: {{ $net.className }}
+  tls:
+    - hosts:
+        - {{ $hx.host | quote }}
+      secretName: {{ $hx.tlsSecretName }}
+  rules:
+    - host: {{ $hx.host | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "kramerius.observability.hyperdxName" . }}
+                port:
+                  name: http
+{{- end }}
+
+{{- end }}

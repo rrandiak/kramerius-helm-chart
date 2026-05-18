@@ -1,0 +1,22 @@
+{{- if eq (include "kramerius.observability.enabled" .) "true" }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "kramerius.observability.clickhouseName" . }}
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "kramerius.labels" . | nindent 4 }}
+    app.kubernetes.io/name: {{ include "kramerius.observability.clickhouseName" . }}
+    app.kubernetes.io/component: observability
+spec:
+  selector:
+    app.kubernetes.io/name: {{ include "kramerius.observability.clickhouseName" . }}
+    app.kubernetes.io/component: observability
+  ports:
+    - name: http
+      port: 8123
+      targetPort: 8123
+    - name: native
+      port: 9000
+      targetPort: 9000
+{{- end }}

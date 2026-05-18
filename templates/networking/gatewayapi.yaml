@@ -1,0 +1,238 @@
+{{/* Kubernetes Gateway API — Gateway + HTTPRoutes (alternative to Ingress) */}}
+{{- if (include "kramerius.networking.gatewayApiEnabled" .) }}
+{{- include "kramerius.networking.validateEdgeHosts" . -}}
+{{- $net := .Values.networking | default dict -}}
+{{- $api := $net.api | default dict -}}
+{{- $pm := $net.processManager | default dict -}}
+{{- $gm := $net.gatewayManager | default dict -}}
+{{- $ad := $net.admin | default dict -}}
+{{- $hx := $net.hyperdx | default dict -}}
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: kramerius-gateway
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "kramerius.labels" . | nindent 4 }}
+spec:
+  gatewayClassName: {{ $net.gatewayClassName | quote }}
+  listeners:
+    - name: kramerius-https
+      hostname: {{ $api.host | quote }}
+      port: 443
+      protocol: HTTPS
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - name: {{ $api.tlsSecretName }}
+            kind: Secret
+      allowedRoutes:
+        namespaces:
+          from: Same
+    {{- if (.Values.gateway.managementClient.enabled | default false) }}
+    - name: kramerius-gw-manager-https
+      hostname: {{ $gm.host | quote }}
+      port: 443
+      protocol: HTTPS
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - name: {{ $gm.tlsSecretName }}
+            kind: Secret
+      allowedRoutes:
+        namespaces:
+          from: Same
+    {{- end }}
+    {{- if (.Values.adminClient.enabled | default false) }}
+    - name: kramerius-admin-https
+      hostname: {{ $ad.host | quote }}
+      port: 443
+      protocol: HTTPS
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - name: {{ $ad.tlsSecretName }}
+            kind: Secret
+      allowedRoutes:
+        namespaces:
+          from: Same
+    {{- end }}
+    - name: kramerius-pm-https
+      hostname: {{ $pm.host | quote }}
+      port: 443
+      protocol: HTTPS
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - name: {{ $pm.tlsSecretName }}
+            kind: Secret
+      allowedRoutes:
+        namespaces:
+          from: Same
+    {{- if (.Values.observability.enabled | default false) }}
+    - name: kramerius-hyperdx-https
+      hostname: {{ $hx.host | quote }}
+      port: 443
+      protocol: HTTPS
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - name: {{ $hx.tlsSecretName }}
+            kind: Secret
+      allowedRoutes:
+        namespaces:
+          from: Same
+    {{- end }}
+---
+{{/* HTTPRoute: main public host → gateway-openresty */}}
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: kramerius-api
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "kramerius.labels" . | nindent 4 }}
+  {{- with $api.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  parentRefs:
+    - name: kramerius-gateway
+      namespace: {{ .Values.namespace }}
+      sectionName: kramerius-https
+  hostnames:
+    - {{ $api.host | quote }}
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: gateway-openresty
+          port: 80
+
+{{- if (.Values.gateway.managementClient.enabled | default false) }}
+---
+{{/* HTTPRoute: gateway-manager host → gateway-management-client */}}
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: kramerius-gateway-manager
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "kramerius.labels" . | nindent 4 }}
+  {{- with $gm.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  parentRefs:
+    - name: kramerius-gateway
+      namespace: {{ .Values.namespace }}
+      sectionName: kramerius-gw-manager-https
+  hostnames:
+    - {{ $gm.host | quote }}
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: gateway-management-client
+          port: {{ .Values.gateway.managementClient.port | default 8080 }}
+{{- end }}
+
+{{- if (.Values.adminClient.enabled | default false) }}
+---
+{{/* HTTPRoute: admin host → admin-client SPA */}}
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: kramerius-admin
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "kramerius.labels" . | nindent 4 }}
+  {{- with $ad.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  parentRefs:
+    - name: kramerius-gateway
+      namespace: {{ .Values.namespace }}
+      sectionName: kramerius-admin-https
+  hostnames:
+    - {{ $ad.host | quote }}
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: admin-client
+          port: 80
+{{- end }}
+
+---
+{{/* HTTPRoute: process-manager host → process-manager */}}
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: kramerius-process-manager
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "kramerius.labels" . | nindent 4 }}
+  {{- with $pm.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  parentRefs:
+    - name: kramerius-gateway
+      namespace: {{ .Values.namespace }}
+      sectionName: kramerius-pm-https
+  hostnames:
+    - {{ $pm.host | quote }}
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: process-manager
+          port: 80
+
+{{- if (.Values.observability.enabled | default false) }}
+---
+{{/* HTTPRoute: hyperdx host → hyperdx */}}
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: kramerius-hyperdx
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "kramerius.labels" . | nindent 4 }}
+  {{- with $hx.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  parentRefs:
+    - name: kramerius-gateway
+      namespace: {{ .Values.namespace }}
+      sectionName: kramerius-hyperdx-https
+  hostnames:
+    - {{ $hx.host | quote }}
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: {{ include "kramerius.observability.hyperdxName" . }}
+          port: 8080
+{{- end }}
+
+{{- end }}

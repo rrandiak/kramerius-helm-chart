@@ -1,0 +1,82 @@
+# values.part.yaml — Storage Import
+#
+# Focused excerpt from values.yaml covering ingest staging storage.
+# Overlay this onto a base values file to configure import volumes.
+#
+# How it works:
+#   - storages.imports.directory defines the root import path inside pods.
+#   - storages.imports.volumes[] defines one or more sub-volumes mounted under
+#     that root. Each entry creates a PV + PVC (NFS type) or just a PVC (pvc type),
+#     unless existingClaim is set, in which case creation is skipped entirely.
+#   - Workers mount all volumes read-write; curator mounts them read-only.
+#   - The import.directory value in configuration.properties is set to
+#     storages.imports.directory (the root path, not individual mount paths).
+#
+# If volumes: [] (empty list), no import resources are created and no volumes
+# are mounted. This is valid for deployments with no local ingestion.
+
+storages:
+  # Fallback NFS server for any NFS volume with an empty nfsServer field.
+  # Set once here to avoid repeating the address in every volume entry.
+  defaultNfsServer: ""
+
+  imports:
+    # Root import directory inside pods.
+    # Written as import.directory in configuration.properties.
+    # All volume mountPaths below must be subdirectories of this value.
+    directory: /data/import
+
+    # List of import staging volumes.
+    # Each entry maps to one PV/PVC (or existing claim) and one volumeMount
+    # in each worker pod (RW) and in the curator pod (RO).
+    #
+    # Fields per entry:
+    #   name          - Used in PVC/PV resource names: <release>-import-<name>
+    #                   Must be unique within this list.
+    #   mountPath     - Absolute path inside the pod. Must be under imports.directory.
+    #   type          - "nfs" (creates PV+PVC) or "pvc" (creates PVC only)
+    #   nfsServer     - NFS server address. Empty uses storages.defaultNfsServer.
+    #   nfsPath       - Export path on the NFS server. Required for type: nfs.
+    #   existingClaim - If set, skips resource creation and uses this PVC name directly.
+    #   storageClass  - StorageClass for the PVC (and PV for static NFS binding).
+    #   size          - Capacity. Informational for static NFS; used for dynamic PVC.
+    #   mountOptions  - NFS mount options list. Only applied for type: nfs.
+    volumes: []
+
+    # ---------------------------------------------------------------------------
+    # Example: two NFS-backed import volumes from different providers
+    #
+    # volumes:
+    #   - name: ndk
+    #     mountPath: /data/import/ndk
+    #     type: nfs
+    #     nfsServer: ""                          # Uses defaultNfsServer
+    #     nfsPath: /data/kramerius/import/ndk
+    #     existingClaim: ""
+    #     storageClass: nfs
+    #     size: 50Gi
+    #     mountOptions:
+    #       - hard
+    #       - nfsvers=4.1
+    #
+    #   - name: partner2
+    #     mountPath: /data/import/partner2
+    #     type: nfs
+    #     nfsServer: "10.0.2.20"               # Explicit server overrides defaultNfsServer
+    #     nfsPath: /export/kramerius/import/partner2
+    #     existingClaim: ""
+    #     storageClass: nfs
+    #     size: 100Gi
+    #     mountOptions: []
+    # ---------------------------------------------------------------------------
+
+    # ---------------------------------------------------------------------------
+    # Example: attach a pre-existing PVC (no PV/PVC creation)
+    #
+    # volumes:
+    #   - name: archive
+    #     mountPath: /data/import/archive
+    #     type: pvc
+    #     existingClaim: my-archive-import-pvc
+    #     size: 200Gi                           # Informational only
+    # ---------------------------------------------------------------------------

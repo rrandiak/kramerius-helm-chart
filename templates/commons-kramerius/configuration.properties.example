@@ -1,0 +1,20 @@
+### Kramerius properties
+
+client=https://ceskadigitalniknihovna.cz/
+
+oai.rowsInResults=50
+oai.set.edm.dataProvider=Czech digital library
+oai.set.edm.provider=Czech digital library
+
+x_ip_forwarded_enabled_for=172.24.*
+http.timeout=300000
+
+default.eduid.type=idp
+
+# Use same acronym property in values.yaml
+acronym=mzk
+sdnnt.check.acronym=mzk
+
+# PDF generation
+generatePdfMaxRange=120
+turnOffPdfCheck=false

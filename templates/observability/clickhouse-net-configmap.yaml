@@ -1,0 +1,17 @@
+{{- if eq (include "kramerius.observability.enabled" .) "true" }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: clickhouse-net-config
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "kramerius.labels" . | nindent 4 }}
+    app.kubernetes.io/name: {{ include "kramerius.observability.clickhouseName" . }}
+    app.kubernetes.io/component: observability
+data:
+  listen.xml: |
+    <clickhouse>
+      <listen_host>0.0.0.0</listen_host>
+      <listen_host>::</listen_host>
+    </clickhouse>
+{{- end }}

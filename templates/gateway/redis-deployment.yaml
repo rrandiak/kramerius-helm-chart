@@ -1,0 +1,107 @@
+{{- $r  := .Values.gateway.redis | default dict }}
+{{- $ri := $r.image    | default dict }}
+{{- $rs := $r.storage  | default dict }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gateway-redis-config
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "kramerius.labels" . | nindent 4 }}
+    app.kubernetes.io/name: gateway-redis
+    app.kubernetes.io/component: gateway
+data:
+  redis.conf: |
+    save 900 1
+    save 300 10
+    save 60 10000
+    appendonly no
+    dir /data
+    dbfilename dump.rdb
+    {{- if $r.password }}
+    requirepass {{ $r.password | quote }}
+    {{- end }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: gateway-redis-data
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "kramerius.labels" . | nindent 4 }}
+    app.kubernetes.io/name: gateway-redis
+    app.kubernetes.io/component: gateway
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: {{ default .Values.defaultStorageClass $rs.storageClass | quote }}
+  resources:
+    requests:
+      storage: {{ $rs.size | default "1Gi" }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gateway-redis
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "kramerius.labels" . | nindent 4 }}
+    app.kubernetes.io/name: gateway-redis
+    app.kubernetes.io/component: gateway
+spec:
+  selector:
+    app.kubernetes.io/name: gateway-redis
+    app.kubernetes.io/component: gateway
+  ports:
+    - name: redis
+      port: 6379
+      targetPort: 6379
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gateway-redis
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "kramerius.labels" . | nindent 4 }}
+    app.kubernetes.io/name: gateway-redis
+    app.kubernetes.io/component: gateway
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: gateway-redis
+      app.kubernetes.io/component: gateway
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: gateway-redis
+        app.kubernetes.io/component: gateway
+    spec:
+      {{- if $ri.pullSecret }}
+      imagePullSecrets:
+        - name: {{ $ri.pullSecret | quote }}
+      {{- end }}
+      containers:
+        - name: redis
+          image: {{ $ri.repository | default "redis" }}:{{ $ri.tag | default "7-alpine" }}
+          imagePullPolicy: {{ $ri.pullPolicy | default "IfNotPresent" }}
+          command: ["redis-server", "/etc/redis/redis.conf"]
+          ports:
+            - containerPort: 6379
+              name: redis
+          volumeMounts:
+            - name: redis-config
+              mountPath: /etc/redis
+            - name: redis-data
+              mountPath: /data
+          resources:
+            {{- toYaml ($r.resources | default dict) | nindent 12 }}
+      volumes:
+        - name: redis-config
+          configMap:
+            name: gateway-redis-config
+        - name: redis-data
+          persistentVolumeClaim:
+            claimName: gateway-redis-data

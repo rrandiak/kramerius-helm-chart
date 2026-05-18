@@ -1,0 +1,24 @@
+{{/* Kramerius Public — ClusterIP Service (port 80 → 8080); StatefulSet serviceName references this name */}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: kramerius-public
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "kramerius.labels" . | nindent 4 }}
+    app.kubernetes.io/name: kramerius-public
+    app.kubernetes.io/component: kramerius-public
+spec:
+  {{- $sa := .Values.krameriusPublic.service.sessionAffinity | default dict }}
+  sessionAffinity: {{ $sa.type | default "ClientIP" }}
+  {{- if eq ($sa.type | default "ClientIP") "ClientIP" }}
+  sessionAffinityConfig:
+    clientIP:
+      timeoutSeconds: {{ $sa.clientIPTimeoutSeconds | default 10800 }}
+  {{- end }}
+  selector:
+    {{- include "kramerius.public.matchLabels" . | nindent 4 }}
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8080

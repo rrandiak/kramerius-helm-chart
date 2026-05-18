@@ -1,0 +1,30 @@
+{{- $gc := .Values.gateway.caching | default dict }}
+{{- range $gc.rules | default list }}
+{{- if lt (.minHits | default 2 | int) 1 }}
+{{- fail "gateway.caching.rules: minHits must be >= 1" }}
+{{- end }}
+{{- end }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gateway-openresty-lua
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "kramerius.labels" . | nindent 4 }}
+    {{- include "kramerius.gateway.matchLabels" . | nindent 4 }}
+data:
+  cache_config.lua: |
+{{ include "kramerius.gateway.cacheConfigLua" . | nindent 4 }}
+  ratelimit_config.lua: |
+{{ include "kramerius.gateway.rateLimitConfigLua" . | nindent 4 }}
+  gateway_config.lua: |
+{{ .Files.Get "files/gateway/gateway_config.lua" | nindent 4 }}
+  ratelimiter.lua: |
+{{ .Files.Get "files/gateway/ratelimiter.lua" | nindent 4 }}
+  gateway_common.lua: |
+{{ .Files.Get "files/gateway/gateway_common.lua" | nindent 4 }}
+  response_cache.lua: |
+{{ .Files.Get "files/gateway/response_cache.lua" | nindent 4 }}
+  cache_memory_body.lua: |
+{{ .Files.Get "files/gateway/cache_memory_body.lua" | nindent 4 }}
+

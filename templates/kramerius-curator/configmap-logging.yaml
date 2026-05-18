@@ -1,0 +1,11 @@
+{{/* Kramerius Curator — Tomcat logging.properties ConfigMap */}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kramerius-curator-logging
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "kramerius.labels" . | nindent 4 }}
+data:
+  logging.properties: |
+    {{- include "kramerius.defaultLoggingProperties" (dict "root" . "value" .Values.krameriusCurator.loggingProperties) | nindent 4 }}

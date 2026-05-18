@@ -1,0 +1,24 @@
+{{/* Kramerius Curator — ClusterIP Service (port 80 -> 8080) */}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: kramerius-curator
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "kramerius.labels" . | nindent 4 }}
+    app.kubernetes.io/name: kramerius-curator
+    app.kubernetes.io/component: kramerius-curator
+spec:
+  {{- $sa := .Values.krameriusCurator.service.sessionAffinity | default dict }}
+  sessionAffinity: {{ $sa.type | default "ClientIP" }}
+  {{- if eq ($sa.type | default "ClientIP") "ClientIP" }}
+  sessionAffinityConfig:
+    clientIP:
+      timeoutSeconds: {{ $sa.clientIPTimeoutSeconds | default 10800 }}
+  {{- end }}
+  selector:
+    {{- include "kramerius.curator.matchLabels" . | nindent 4 }}
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8080

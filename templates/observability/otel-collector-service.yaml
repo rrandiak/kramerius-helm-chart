@@ -1,0 +1,19 @@
+{{- if and (eq (include "kramerius.observability.enabled" .) "true") (eq (include "kramerius.observability.otelCollectorEnabled" .) "true") }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "kramerius.observability.otelCollectorName" . }}
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "kramerius.labels" . | nindent 4 }}
+    app.kubernetes.io/name: {{ include "kramerius.observability.otelCollectorName" . }}
+    app.kubernetes.io/component: observability
+spec:
+  selector:
+    app.kubernetes.io/name: {{ include "kramerius.observability.otelCollectorName" . }}
+    app.kubernetes.io/component: observability
+  ports:
+    - name: otlp-grpc
+      port: 4317
+      targetPort: 4317
+{{- end }}

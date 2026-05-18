@@ -1,0 +1,98 @@
+# values.part.yaml — Storage Akubra
+#
+# Focused excerpt from values.yaml covering Akubra object and datastream storage.
+# Overlay this onto a base values file for standard-profile deployments.
+#
+# This configuration is ignored (and these resources are not created) when
+# akubraConfig.enabled is false (for example in CDK profile).
+#
+# Both volumes support two backend types:
+#   type: nfs  — chart creates a PV + PVC bound to an NFS export.
+#                If nfsServer is empty, storages.defaultNfsServer is used.
+#                If existingClaim is set, PV/PVC creation is skipped.
+#   type: pvc  — chart creates only a PVC (dynamic provisioning via storageClass).
+#                If existingClaim is set, PVC creation is skipped.
+#
+# Access mode is always ReadWriteMany. Read-only enforcement for kramerius-public
+# is applied at the volumeMount level inside the workload templates, not here.
+
+storages:
+  # Fallback NFS server IP/hostname used for any NFS volume with an empty nfsServer.
+  # Set this once and leave individual volume nfsServer fields empty to use it.
+  defaultNfsServer: ""
+
+  # ---------------------------------------------------------------------------
+  # Akubra object store — FOXML digital object descriptors
+  # Mounted at: /data/akubra/objectStore
+  # Consumers:
+  #   kramerius-public  → read-only
+  #   kramerius-curator → read-write
+  #   workers           → read-write
+  # ---------------------------------------------------------------------------
+  akubra-object-store:
+    # Backend type: "nfs" or "pvc"
+    type: nfs
+
+    # NFS server address. Leave empty to use storages.defaultNfsServer above.
+    nfsServer: ""
+
+    # NFS export path on the server.
+    nfsPath: /data/kramerius/akubra/objectStore
+
+    # Set to the name of an existing PVC to skip PV/PVC creation entirely.
+    # The named PVC must already exist in the namespace and be Bound.
+    existingClaim: ""
+
+    # StorageClass name written onto the PVC and PV (must match for static binding).
+    storageClass: nfs
+
+    # PVC capacity request. For static NFS binding this is informational.
+    size: 50Gi
+
+    # NFS mount options applied to the PV spec.
+    # Recommended: hard mount with nfsvers=4.1 for reliability.
+    mountOptions: []
+    # mountOptions:
+    #   - hard
+    #   - nfsvers=4.1
+
+  # ---------------------------------------------------------------------------
+  # Akubra datastream store — binary datastreams (ALTO, TEXT_OCR, MODS, DC, etc.)
+  # Mounted at: /data/akubra/datastreamStore
+  # Consumers: same as object store above.
+  # ---------------------------------------------------------------------------
+  akubra-datastream-store:
+    type: nfs
+    nfsServer: ""
+    nfsPath: /data/kramerius/akubra/datastreamStore
+    existingClaim: ""
+    storageClass: nfs
+    size: 50Gi
+    mountOptions: []
+    # mountOptions:
+    #   - hard
+    #   - nfsvers=4.1
+
+# ---------------------------------------------------------------------------
+# Akubra directory sharding patterns.
+# These are written into configuration.properties for all workloads.
+#
+# The pattern "##/##/##" creates three hex shard levels, e.g.:
+#   ab/cd/ef/uuid-of-the-object
+#
+# WARNING: Do NOT change these values on a live store with existing data.
+# The on-disk directory tree must be migrated first; mismatched patterns
+# cause immediate lookup failures at runtime.
+# ---------------------------------------------------------------------------
+akubraConfig:
+  # Master switch for Akubra storage mounts, PV/PVC resources, and Akubra
+  # configuration.properties section generation.
+  enabled: true
+
+  objectStore:
+    # Written as objectStore.pattern in configuration.properties
+    pattern: "##/##/##"
+
+  datastreamStore:
+    # Written as datastreamStore.pattern in configuration.properties
+    pattern: "##/##/##"

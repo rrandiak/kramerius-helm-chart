@@ -1,0 +1,27 @@
+{{/* Kramerius Curator — ConfigMap (configuration.properties, optional server.xml) */}}
+{{- if and (.Values.krameriusCurator.config.configurationPropertiesOverride | default "" | trim) (.Values.krameriusCurator.config.configurationPropertiesExtra | default "" | trim) }}
+  {{- fail "krameriusCurator.config: configurationPropertiesOverride and configurationPropertiesExtra are mutually exclusive" }}
+{{- end }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kramerius-curator-config
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "kramerius.labels" . | nindent 4 }}
+data:
+  configuration.properties: |
+    {{- if (.Values.krameriusCurator.config.configurationPropertiesOverride | default "") | trim }}
+    {{- .Values.krameriusCurator.config.configurationPropertiesOverride | nindent 4 }}
+    {{- else }}
+    {{- include "kramerius.curator.configurationProperties" . | nindent 4 }}
+    {{- end }}
+  {{- $serverXml := include "kramerius.curator.serverXml" . | trim }}
+  {{- if $serverXml }}
+  server.xml: |
+    {{- $serverXml | nindent 4 }}
+  {{- end }}
+  {{- range $i, $c := .Values.krameriusCurator.customConfigs }}
+  custom-config-{{ $i }}: |
+    {{- $c.content | nindent 4 }}
+  {{- end }}

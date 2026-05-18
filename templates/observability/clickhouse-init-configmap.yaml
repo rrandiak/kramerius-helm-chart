@@ -1,0 +1,40 @@
+{{- if eq (include "kramerius.observability.enabled" .) "true" }}
+{{- $c := ((.Values.observability | default dict).clickhouse | default dict) }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: clickhouse-init
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "kramerius.labels" . | nindent 4 }}
+    app.kubernetes.io/name: {{ include "kramerius.observability.clickhouseName" . }}
+    app.kubernetes.io/component: observability
+data:
+  init.sql: |
+    CREATE TABLE IF NOT EXISTS default.nginx_access_logs
+    (
+        timestamp       DateTime64(3),
+        remote_addr     String,
+        is_private_ip   Bool                   DEFAULT false,
+        request_method  LowCardinality(String),
+        request_uri     String,
+        path            String,
+        query_params    String                 DEFAULT '',
+        endpoint        LowCardinality(String) DEFAULT 'unknown',
+        status          UInt16,
+        body_bytes_sent UInt64,
+        response_time_ms UInt32,
+        http_referer    String,
+        http_user_agent String,
+        continent_code  LowCardinality(String) DEFAULT '',
+        country_code    LowCardinality(String) DEFAULT '',
+        city_name       String                 DEFAULT '',
+        organization    String                 DEFAULT '',
+        actor           LowCardinality(String) DEFAULT ''
+    )
+    ENGINE = MergeTree()
+    PARTITION BY toDate(timestamp)
+    ORDER BY (timestamp, status)
+    TTL toDateTime(timestamp) + INTERVAL {{ $c.retentionDays | default 90 }} DAY
+    SETTINGS index_granularity = 8192;
+{{- end }}

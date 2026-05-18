@@ -1,0 +1,24 @@
+{{/* Worker groups — headless Service per group (stable pod DNS for WORKER_BASE_URL) */}}
+{{- range .Values.workerGroups }}
+{{- $group := . }}
+{{- $root := $ }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: worker-{{ $group.name }}
+  namespace: {{ $root.Values.namespace }}
+  labels:
+    {{- include "kramerius.labels" $root | nindent 4 }}
+    app.kubernetes.io/name: worker-{{ $group.name }}
+    app.kubernetes.io/component: worker
+spec:
+  clusterIP: None
+  selector:
+    app.kubernetes.io/name: worker-{{ $group.name }}
+    app.kubernetes.io/component: worker
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8080
+{{- end }}

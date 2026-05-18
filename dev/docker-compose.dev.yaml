@@ -1,0 +1,40 @@
+# Local stack: standalone gateway management UI on http://localhost:8080.
+# Optional env:
+#   SLACK_SIGNING_SECRET=...
+#   GATEWAY_MANAGER_PORT=8080
+#   docker compose -f docker-compose.dev.yaml up --build
+#   — or from chart root —
+#   make run
+#
+# Linux: host.docker.internal is added so containers can reach the host network.
+
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  gateway-management:
+    image: python:3.12-slim
+    working_dir: /app
+    volumes:
+      - ../files/gateway:/app:ro
+    environment:
+      TZ: ${TZ:-UTC}
+      SLACK_SIGNING_SECRET: ${SLACK_SIGNING_SECRET:-}
+      PYTHONPATH: /app
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "${GATEWAY_MANAGER_PORT:-8080}:8080"
+    depends_on:
+      - redis
+    command:
+      - /bin/sh
+      - -c
+      - |
+        set -e
+        pip install --no-cache-dir --root-user-action=ignore -q redis
+        exec python /app/management.py 8080

@@ -1,0 +1,45 @@
+# lock-server feature — values
+#
+# Configures the Hazelcast-based distributed lock server.
+#
+# The lock server runs as a single-replica StatefulSet. Lock state is
+# in-memory; a pod restart releases all active locks.
+#
+# The chart automatically injects HAZELCAST_SERVER_ADDRESSES into every
+# consumer pod (kramerius-public, kramerius-curator, workers). The value
+# is computed as: hazelcast.<namespace>.svc.cluster.local:5701
+
+hazelcast:
+  image:
+    # Docker image for the Hazelcast lock server.
+    # Source: https://github.com/ceskaexpedice/hazelcast-locks-server
+    repository: ceskaexpedice/hazelcast-locks-server
+    tag: "2.0"
+    # Use Always in development to pick up patch releases automatically.
+    # Switch to IfNotPresent with a pinned immutable tag in production.
+    pullPolicy: Always
+    pullSecret: ""
+  
+  instance: "akubrasync"
+  user: "dev"
+
+  env:
+    # JVM options for the Hazelcast server process.
+    # -Xms / -Xmx: heap sizing — must fit within resources.limits.memory
+    # hazelcast.diagnostics.enabled: logs membership/throughput snapshots
+    #   to stdout; useful for diagnosing lock contention.
+    JAVA_OPTS: "-Xms512M -Xmx2G -Dhazelcast.diagnostics.enabled=true"
+
+  resources:
+    requests:
+      # Minimum CPU guaranteed to the pod.
+      cpu: 100m
+      # Minimum memory. Should comfortably exceed -Xms plus JVM overhead.
+      memory: 640Mi
+    limits:
+      # Maximum CPU the pod may burst to.
+      cpu: 500m
+      # Hard memory ceiling. Must be higher than -Xmx to leave room for
+      # native memory, thread stacks, and Hazelcast off-heap structures.
+      # Rule of thumb: limits.memory ≥ -Xmx + 1Gi
+      memory: 3Gi

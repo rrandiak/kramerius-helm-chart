@@ -1,0 +1,18 @@
+cdk:
+  enabled: true
+  # Optional: defaults to enabled when unset. Uncomment to force false while CDK extras stay on.
+  # server:
+  #   mode: true
+  forwardClient:
+    maxConnections: 150
+    maxPerRoute: 100
+  shibbolethForwardHeaders: "Joined string of headers"
+  collections:
+    sources:
+      knav:
+        baseurl: https://kramerius.lib.cas.cz/search
+        username: xxx
+        pswd: xxx
+        api: v7
+        forwardurl: http://knav-tunnel.cdk-proxy.svc.cluster.local/search
+        licenses: true

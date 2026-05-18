@@ -1,0 +1,40 @@
+{{- if eq (include "kramerius.observability.enabled" .) "true" }}
+{{- $c := ((.Values.observability | default dict).clickhouse | default dict) }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: clickhouse-init
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "kramerius.labels" . | nindent 4 }}
+    app.kubernetes.io/name: {{ include "kramerius.observability.clickhouseName" . }}
+    app.kubernetes.io/component: observability
+spec:
+  backoffLimit: 5
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: clickhouse-init
+          image: {{ (default "clickhouse/clickhouse-server" ($c.image | default dict).repository) }}:{{ (default "25.4-alpine" ($c.image | default dict).tag) }}
+          command:
+            - /bin/sh
+            - -c
+            - |
+              HOST={{ include "kramerius.observability.clickhouseName" . | quote }}
+              echo "Waiting for ClickHouse at $HOST..."
+              until clickhouse client --host="$HOST" --user={{ $c.user | default "" | quote }} --password={{ $c.password | default "" | quote }} --query "SELECT 1" > /dev/null 2>&1; do
+                sleep 2
+              done
+              echo "ClickHouse ready. Running init SQL..."
+              clickhouse client --host="$HOST" --user={{ $c.user | default "" | quote }} --password={{ $c.password | default "" | quote }} --queries-file /init/init.sql
+              echo "Done."
+          volumeMounts:
+            - name: clickhouse-init
+              mountPath: /init
+              readOnly: true
+      volumes:
+        - name: clickhouse-init
+          configMap:
+            name: clickhouse-init
+{{- end }}

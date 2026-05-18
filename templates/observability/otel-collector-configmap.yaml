@@ -1,0 +1,14 @@
+{{- if and (eq (include "kramerius.observability.enabled" .) "true") (eq (include "kramerius.observability.otelCollectorEnabled" .) "true") }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "kramerius.observability.otelCollectorName" . }}-config
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "kramerius.labels" . | nindent 4 }}
+    app.kubernetes.io/name: {{ include "kramerius.observability.otelCollectorName" . }}
+    app.kubernetes.io/component: observability
+data:
+  collector.yaml: |
+    {{- include "kramerius.observability.otelCollectorConfig" . | nindent 4 }}
+{{- end }}

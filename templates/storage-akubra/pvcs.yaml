@@ -1,0 +1,62 @@
+{{/* Akubra storage PVs and PVCs — object store and datastream store */}}
+{{- if eq (include "kramerius.akubra.enabled" .) "true" }}
+{{- range $key := list "akubra-object-store" "akubra-datastream-store" }}
+{{- $st := index $.Values.storages $key }}
+{{- if not $st.type }}{{- continue }}{{- end }}
+{{- if and (eq $st.type "nfs") (not $st.existingClaim) }}
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: {{ include "kramerius.storagePvcName" (dict "root" $ "storageKey" $key) }}
+  labels:
+    {{- include "kramerius.labels" $ | nindent 4 }}
+spec:
+  capacity:
+    storage: {{ $st.size }}
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: {{ include "kramerius.storagePvcStorageClass" (dict "root" $ "storageKey" $key) | quote }}
+  {{- if $st.mountOptions }}
+  mountOptions:
+    {{- toYaml $st.mountOptions | nindent 4 }}
+  {{- end }}
+  nfs:
+    server: {{ include "kramerius.storageNfsServer" (dict "root" $ "storageKey" $key) | quote }}
+    path: {{ $st.nfsPath | quote }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "kramerius.storagePvcName" (dict "root" $ "storageKey" $key) }}
+  namespace: {{ $.Values.namespace }}
+  labels:
+    {{- include "kramerius.labels" $ | nindent 4 }}
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: {{ include "kramerius.storagePvcStorageClass" (dict "root" $ "storageKey" $key) | quote }}
+  volumeName: {{ include "kramerius.storagePvcName" (dict "root" $ "storageKey" $key) | quote }}
+  resources:
+    requests:
+      storage: {{ $st.size }}
+{{- else if and (eq $st.type "pvc") (not $st.existingClaim) }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "kramerius.storagePvcName" (dict "root" $ "storageKey" $key) }}
+  namespace: {{ $.Values.namespace }}
+  labels:
+    {{- include "kramerius.labels" $ | nindent 4 }}
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: {{ include "kramerius.storagePvcStorageClass" (dict "root" $ "storageKey" $key) | quote }}
+  resources:
+    requests:
+      storage: {{ $st.size }}
+{{- end }}
+{{- end }}
+{{- end }}

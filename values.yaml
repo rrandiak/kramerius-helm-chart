@@ -1,17 +1,702 @@
 # Namespace for all resources
 namespace: kramerius
 
-# Image pull secrets for private registries.
-# Each entry creates a kubernetes.io/dockerconfigjson Secret and references it in pods.
-#   - name: my-registry-secret
-#     dockerconfigjson: "<base64-encoded .dockerconfigjson>"
-imagePullSecrets: []
+# ---------------------------------------------------------------------------
+# Edge networking (Ingress or Gateway API). When enabled, api + processManager
+# hosts and TLS secrets are required; admin / gatewayManager / hyperdx hosts are
+# required when adminClient, gateway.managementClient, or observability are enabled.
+# Workers are cluster-internal only — no routes here.
+# ---------------------------------------------------------------------------
+networking:
+  enabled: true
+  mode: ingress
+  className: nginx
+  gatewayClassName: ""
+  api:
+    host: "k7.example.com"
+    tlsSecretName: kramerius-gateway-tls
+    annotations:
+      cert-manager.io/cluster-issuer: letsencrypt
+      nginx.ingress.kubernetes.io/real-ip-header: X-Forwarded-For
+  admin:
+    host: "admin.k7.example.com"
+    tlsSecretName: kramerius-admin-tls
+    annotations:
+      cert-manager.io/cluster-issuer: letsencrypt
+      nginx.ingress.kubernetes.io/real-ip-header: X-Forwarded-For
+  processManager:
+    host: "process-manager.k7.example.com"
+    tlsSecretName: kramerius-process-manager-tls
+    annotations:
+      cert-manager.io/cluster-issuer: letsencrypt
+      nginx.ingress.kubernetes.io/real-ip-header: X-Forwarded-For
+  gatewayManager:
+    host: "gateway-manager.k7.example.com"
+    tlsSecretName: gateway-manager-tls
+    annotations:
+      cert-manager.io/cluster-issuer: letsencrypt
+      nginx.ingress.kubernetes.io/real-ip-header: X-Forwarded-For
+  hyperdx:
+    host: "hyperdx.k7.example.com"
+    tlsSecretName: hyperdx-tls
+    annotations:
+      cert-manager.io/cluster-issuer: letsencrypt
+      nginx.ingress.kubernetes.io/real-ip-header: X-Forwarded-For
 
-# Default StorageClass used for PVC-backed volumes when `storageClass` is empty.
-# Applies to:
-# - `storages.*.type: pvc`
-# - per-component tomcatLogs PVCs (`krameriusPublic.tomcatLogs`, etc.)
-defaultStorageClass: ""
+  # CDK only (see values.cdk.yaml + cdk.enabled): when the users database is replicated
+  # between two locations, that path is Postgres east-west (TCP), not Ingress/Gateway API.
+  # This chart does not render resources for it — plan VPN / peering / firewalls separately;
+  # see templates/networking/README.md (CDK cross-site users database).
+
+# Edge HTTP(S) is configured only under `networking` above (mode: ingress | gatewayApi).
+# Workers are not exposed via Ingress / Gateway API.
+
+# ---------------------------------------------------------------------------
+# Edge gateway: OpenResty + Lua (curatorPathPrefix -> curator, else public).
+# Request + download quotas use in-pod lua_shared_dict counters (per replica, in-memory, reset on pod restart).
+# Policy configuration (rules, bans, profiles, peak schedule) is stored in Redis — without Redis the gateway fails open.
+# Ingress main host points at Service "gateway-openresty".
+# ---------------------------------------------------------------------------
+gateway:
+  image:
+    repository: openresty/openresty
+    tag: "1.27.1.2-3-alpine"
+    pullPolicy: IfNotPresent
+    pullSecret: ""
+  # CoreDNS / cluster DNS (variable proxy_pass to kramerius backends). Adjust per cluster.
+  resolver: kube-dns.kube-system.svc.cluster.local valid=30s ipv6=off
+  # CIDRs of trusted upstream proxies (nginx-ingress pod/node CIDR). Only these IPs are trusted
+  # to set X-Forwarded-For. $remote_addr is used for rate limiting — not raw XFF — so this must
+  # be set correctly to prevent clients spoofing their IP to bypass rate limits.
+  trustedProxyCidrs:
+    - 10.0.0.0/8
+    - 172.16.0.0/12
+    - 192.168.0.0/16
+  # ngx.shared memory for rate (gateway_rl) + download (gateway_dl) counters; increase if many distinct IPs/keys.
+  luaSharedDict:
+    rateMisc: 1m
+    rateLimit: 32m
+    downloadQuota: 64m
+  clientMaxBodySize: 512m
+  # Max requests per keep-alive connection. Bump from nginx default (1000) to reduce reconnect overhead under load.
+  keepaliveRequests: 10000
+  # Gateway routes this URI prefix to kramerius-curator (RW); everything else to kramerius-public. Set "" to disable.
+  curatorPathPrefix: "/search/api/admin/"
+  proxy:
+    connectTimeout: 10s
+    sendTimeout: 120s
+    readTimeout: 120s
+  # Optional response caching (GET/HEAD). Rules match pathTemplates like rate limits ({segment} = one path segment).
+  # cacheType: proxy_cache (disk via nginx proxy_cache) or lua_shared_dict (small bodies in shared memory, maxEntryBytes).
+  caching:
+    enabled: false
+    methods:
+      - GET
+      - HEAD
+    proxyCache:
+      inactive: 7d
+    memory:
+      dictSize: 64m
+      metaDictSize: 8m
+      maxEntryBytes: 2097152
+    disk:
+      emptyDirSizeLimit: 8Gi
+    rules: []
+  # Client IPs or CIDRs exempt from both request rate limits and download quotas.
+  # Supports exact IPs ("1.2.3.4") and CIDR notation ("10.0.0.0/8").
+  rateLimitWhitelist: []
+  # Longest pathPrefix wins. One counter bucket per client IP + matched pathPrefix + time window.
+  rateLimits:
+    - pathPrefix: "/"
+      maxRequests: 600
+      windowSeconds: 60
+  # Download quota per client IP + matched pathPrefix + window. lua_shared_dict gateway_dl.
+  # Pre-check uses upstream Content-Length when present; final accounting uses body_bytes_sent (200/206 only).
+  # Chunked responses without Content-Length are counted only in log phase (may slightly exceed max for one response).
+  # Set downloadLimits: [] to disable.
+  downloadLimits:
+    - pathPrefix: "/"
+      maxBytes: 5368709120
+      windowSeconds: 3600
+  # OpenResty replica count; keep at 1 (shared lua_shared_dict counters).
+  replicas: 1
+  # Optional informational line in 429 bodies (chart templates may reference error429Info).
+  error429Info: ""
+  error429IncludeLimits: true
+  userResolution:
+    enabled: false
+    cacheTtlSeconds: 300
+  rateLimiting:
+    rlBurst: 0.5
+    dlBurst: 0.5
+  pollIntervalSeconds: 5
+  redis:
+    password: ""
+    existingSecret: ""  # when set: REDIS_PASSWORD sourced from secretKeyRef (key: "password")
+    image:
+      repository: redis
+      tag: "7-alpine"
+      pullPolicy: IfNotPresent
+      pullSecret: ""
+    storage:
+      storageClass: ""
+      size: 1Gi
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        cpu: 200m
+        memory: 128Mi
+  managementApi:
+    secret: ""
+    existingSecret: ""  # when set: MANAGEMENT_API_SECRET sourced from secretKeyRef (key: "secret")
+  managementClient:
+    enabled: false
+    port: 8080
+    slack:
+      signingSecret: ""
+      existingSecret: ""  # when set: SLACK_SIGNING_SECRET sourced from secretKeyRef (key: "signingSecret")
+      allowedTeams: []
+      allowedUsers: []
+    persistence:
+      enabled: false
+      storageClass: ""
+      size: 100Mi
+      existingClaim: ""
+    image:
+      repository: python
+      tag: "3.12-slim"
+      pullPolicy: IfNotPresent
+      pullSecret: ""
+    resources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+      limits:
+        cpu: 200m
+        memory: 256Mi
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: "1000m"
+      memory: 512Mi
+
+# ---------------------------------------------------------------------------
+# Admin client
+# ---------------------------------------------------------------------------
+adminClient:
+  enabled: true
+  replicas: 1
+  image:
+    repository: registry.example.com/k7-admin
+    tag: latest
+    pullPolicy: Always
+    pullSecret: ""
+  config:
+    userClientBaseUrl: ""
+    keycloakLoginType: "all"
+    devMode: false
+    homeDashboard: []
+  resources:
+    requests:
+      cpu: "10m"
+      memory: "32Mi"
+    limits:
+      cpu: "50m"
+      memory: "64Mi"
+
+# ---------------------------------------------------------------------------
+# Timezone config (injected into all pods)
+# ---------------------------------------------------------------------------
+timezone: Europe/Prague
+
+# ---------------------------------------------------------------------------
+# Shared Kramerius application configuration.properties
+# These properties are emitted into configuration.properties for ALL three
+# app types: kramerius-public, kramerius-curator, and every worker group.
+# Set per-component overrides via config.configurationPropertiesExtra.
+# ---------------------------------------------------------------------------
+krameriusCommon:
+  # Public client base URL (goes to `client` in configuration.properties).
+  client: ""
+  # OAI settings for result paging and EDM provider metadata.
+  oai:
+    rowsInResults: 50
+    setEdmDataProvider: ""
+    setEdmProvider: ""
+  # CIDR / glob accepted in X-Forwarded-For headers (e.g. "172.24.*").
+  # Leave empty to disable the forwarded-IP override.
+  xForwardedFor: ""
+  # HTTP client timeout in milliseconds.
+  httpTimeout: 300000
+  # Default EduID type for federated login (e.g. "idp").
+  defaultEduIdType: ""
+  # Instance acronym — used in SDNNT and various admin UIs.
+  acronym: ""
+  # SDNNT check acronym — usually matches acronym.
+  sdnntAcronym: ""
+  # Maximum page range allowed for PDF generation.
+  generatePdfMaxRange: 120
+  # Set to true to disable the PDF page-count safety check.
+  turnOffPdfCheck: false
+
+# Shared default logging.properties for Tomcat-based components.
+# Used when component-specific loggingProperties are empty.
+defaultLoggingProperties: ""
+
+# ---------------------------------------------------------------------------
+# Kramerius Public - read-only app instances, scalable
+# ---------------------------------------------------------------------------
+krameriusPublic:
+  replicas: 1
+  affinity:
+    type: hard   # "hard" (required) or "soft" (preferred) pod anti-affinity
+  loggingProperties: ""  # Tomcat logging.properties content; empty = no config file written
+  # Per-app javaagents: list of { jarFile, argumentSuffix } — JARs on storages.javaagents PVC (same as workers).
+  javaagents: []
+  shadowEnv: {}
+  image:
+    repository: ceskaexpedice/kramerius
+    tag: "7.2.0"
+    pullPolicy: Always
+    pullSecret: ""
+  env:
+    TOMCAT_PASSWORD: "changeme"
+  serverXml: ""
+  catalinaOptsMemory: "-Xms4g -Xmx8g"
+  catalinaOptsExtra: ""
+  catalinaOptsOverride: ""
+  customConfigs: []
+  service:
+    sessionAffinity:
+      type: ClientIP
+      clientIPTimeoutSeconds: 10800
+  config:
+    # Extra configuration.properties entries. Accepts a string (raw lines) or a list of {key, value} maps.
+    configurationPropertiesExtra: ""
+    configurationPropertiesOverride: ""
+    serverXml: ""
+  livenessProbe: {}
+  readinessProbe: {}
+  resources:
+    requests:
+      cpu: "500m"
+      memory: 6Gi
+    limits:
+      cpu: "2000m"
+      memory: 11Gi
+
+  # Tomcat logs (PVC) configuration for the kramerius-public StatefulSet.
+  tomcatLogs:
+    type: pvc
+    nfsServer: ""
+    nfsPath: ""
+    existingClaim: ""
+    storageClass: nfs
+    size: 5Gi
+
+# ---------------------------------------------------------------------------
+# Kramerius Curator - single read-write instance
+# ---------------------------------------------------------------------------
+krameriusCurator:
+  replicas: 1
+  affinity:
+    type: hard   # "hard" (required) or "soft" (preferred) pod anti-affinity
+  loggingProperties: ""  # Tomcat logging.properties content; empty = no config file written
+  javaagents: []
+  shadowEnv: {}
+  image:
+    repository: ceskaexpedice/kramerius
+    tag: "7.2.0"
+    pullPolicy: Always
+    pullSecret: ""
+  env:
+    TOMCAT_PASSWORD: "changeme"
+  serverXml: ""
+  catalinaOptsMemory: "-Xms4g -Xmx8g"
+  catalinaOptsExtra: ""
+  catalinaOptsOverride: ""
+  customConfigs: []
+  service:
+    sessionAffinity:
+      type: ClientIP
+      clientIPTimeoutSeconds: 10800
+  config:
+    # Extra configuration.properties entries. Accepts a string (raw lines) or a list of {key, value} maps.
+    configurationPropertiesExtra: ""
+    configurationPropertiesOverride: ""
+    serverXml: ""
+  livenessProbe: {}
+  readinessProbe: {}
+  resources:
+    requests:
+      cpu: "250m"
+      memory: 6Gi
+    limits:
+      cpu: "1000m"
+      memory: 11Gi
+
+  # Tomcat logs (PVC) configuration for the kramerius-curator StatefulSet.
+  tomcatLogs:
+    type: pvc
+    nfsServer: ""
+    nfsPath: ""
+    existingClaim: ""
+    storageClass: nfs
+    size: 5Gi
+
+# ---------------------------------------------------------------------------
+# Process Manager - schedules and distributes tasks to workers
+# ---------------------------------------------------------------------------
+processManager:
+  loggingProperties: ""  # Tomcat logging.properties content; empty = no config file written
+  catalinaOptsMemory: "-Xms512M -Xmx2G"
+  catalinaOptsExtra: ""
+  # Extra -javaagent entries (JAR names on storages.javaagents PVC). See krameriusPublic.javaagents shape.
+  javaagents: []
+  shadowEnv: {}
+  image:
+    repository: ceskaexpedice/process-manager
+    tag: "1.5"
+    pullPolicy: Always
+    pullSecret: ""
+  env:
+    # JDBC_* entries are ignored at deploy time; process-manager uses CNPG bootstrap secret + cluster service.
+    JDBC_USERNAME: process
+    JDBC_PASSWORD: process
+    JDBC_URL: jdbc:postgresql://process-db-rw:5432/process
+  config:
+    serverXml: ""
+  livenessProbe: {}
+  readinessProbe: {}
+  resources:
+    requests:
+      cpu: 100m
+      memory: 640Mi
+    limits:
+      cpu: 500m
+      memory: 3Gi
+
+  # Tomcat logs (PVC) configuration for the process-manager StatefulSet.
+  # Each replica gets its own PVC via volumeClaimTemplates.
+  tomcatLogs:
+    type: pvc
+    nfsServer: ""
+    nfsPath: ""
+    existingClaim: ""
+    storageClass: nfs
+    size: 5Gi
+
+# ---------------------------------------------------------------------------
+# Worker shared defaults (consumed by all worker groups unless overridden)
+# ---------------------------------------------------------------------------
+workersDefaults:
+  image:
+    repository: ceskaexpedice/curator-worker
+    tag: "7.2.0"
+    pullPolicy: Always
+    pullSecret: ""
+
+  # Optional -javaagent JARs (see storages.javaagents PVC) prepended to every worker group's javaagents list.
+  # For different agents per replica, use separate worker groups (one replica each) or the same list for all pods in a group.
+  javaagents: []
+
+  # Tomcat logging.properties for all worker pods (shared across all worker groups).
+  # Leave empty to write no logging configuration (uses JVM defaults).
+  loggingProperties: ""
+
+  # Default worker config overrides used when a group-specific value is empty.
+  config:
+    serverXml: ""
+    lpXml: ""
+
+  # Default process token credentials for workers (written to configuration.properties).
+  # Can be overridden per worker group via workerGroups[].token.*.
+  token:
+    clientId: ""
+    secret: ""
+  configuration:
+    apiClientPoint: ""
+    administratorEmail: ""
+    generatePdf:
+      subject: ""
+      text: ""
+  mail:
+    fromUser: ""
+    smtp:
+      user: ""
+      host: ""
+      startttlsEnable: ""
+      port: ""
+      auth: ""
+      socketFactoryPort: ""
+      socketFactoryClass: ""
+
+  # Tomcat logs (PVC) configuration for all worker StatefulSets.
+  # Each worker StatefulSet still creates its own per-replica volumeClaimTemplates.
+  tomcatLogs:
+    type: pvc
+    nfsServer: ""
+    nfsPath: ""
+    existingClaim: ""
+    storageClass: nfs
+    size: 5Gi
+
+  # Process platform logs (PVC) configuration for all worker StatefulSets.
+  # Mounted at /root/.processplatform; each pod writes to its own subdirectory (named after WORKER_ID / POD_NAME).
+  # Each worker StatefulSet creates its own per-replica volumeClaimTemplates.
+  processLogs:
+    type: pvc
+    nfsServer: ""
+    nfsPath: ""
+    existingClaim: ""
+    storageClass: nfs
+    size: 5Gi
+
+# ---------------------------------------------------------------------------
+# Worker groups - define any number of groups
+# Each group becomes its own StatefulSet + headless Service.
+# Workers register themselves with the process manager using their pod-unique URL.
+#
+# Fields per group:
+#   name        - group name, used in resource names
+#   replicas    - number of worker pod replicas
+#   image       - optional, overrides workersDefaults.image
+#   profilesSubset - optional, sets PROFILES_SUBSET env var (limits process types)
+#   token       - optional, overrides workersDefaults.token.{clientId,secret}
+#   configuration / mail - optional per-group nested overrides
+#   env         - additional env vars merged on top of defaults
+#   config      - server.xml, lp.xml, and configurationPropertiesExtra (merged with chart base generated from akubraConfig/solrConfig)
+#   javaagents - optional list merged after workersDefaults.javaagents
+#   shadowEnv - optional env var overlay (see shadow: at top for global CATALINA_OPTS/configurationPropertiesExtra overlays)
+#   livenessProbe  - optional k8s probe spec; omitted when empty
+#   readinessProbe - optional k8s probe spec; omitted when empty
+#   resources   - k8s resource requests/limits
+# ---------------------------------------------------------------------------
+workerGroups:
+  - name: curator
+    replicas: 1
+    affinity:
+      type: soft   # "hard" (required) or "soft" (preferred) pod anti-affinity; soft by default for workers
+    # image:
+    #   repository: ceskaexpedice/curator-worker
+    #   tag: "7.2.0"
+    # profilesSubset: "import,new_indexer_index_object"
+    workerLoopSleepSecs: 10
+    workerLoopPrintSecs: 30
+    catalinaOptsMemory: "-Xms512M -Xmx2G"
+    env: {}
+    configuration:
+      apiClientPoint: ""
+      administratorEmail: ""
+      generatePdf:
+        subject: ""
+        text: ""
+    mail:
+      fromUser: ""
+      smtp:
+        user: ""
+        host: ""
+        startttlsEnable: ""
+        port: ""
+        auth: ""
+        socketFactoryPort: ""
+        socketFactoryClass: ""
+    catalinaOptsOverride: ""
+    customConfigs: []
+    config:
+      # Extra configuration.properties entries. Accepts a string (raw lines) or a list of {key, value} maps.
+      configurationPropertiesExtra: ""
+      configurationPropertiesOverride: ""
+      serverXml: ""
+      lpXml: ""
+    livenessProbe: {}
+    readinessProbe: {}
+    resources:
+      requests:
+        cpu: 250m
+        memory: 640Mi
+      limits:
+        cpu: 1500m
+        memory: 3Gi
+
+  # Example second worker group restricted to import/indexing only:
+  # - name: ingest
+  #   replicas: 2
+  #   profilesSubset: "import,new_indexer_index_object"
+  #   workerLoopSleepSecs: 10
+  #   workerLoopPrintSecs: 30
+  #   catalinaOptsMemory: "-Xms512M -Xmx2G"
+  #   config:
+  #     configurationPropertiesExtra: ""
+  #     serverXml: ""
+  #     lpXml: ""
+  #   resources:
+  #     requests:
+  #       cpu: 250m
+  #       memory: 640Mi
+  #     limits:
+  #       cpu: 1500m
+  #       memory: 3Gi
+
+# ---------------------------------------------------------------------------
+# Hazelcast - lock server, used by apps and workers
+# ---------------------------------------------------------------------------
+hazelcast:
+  image:
+    repository: ceskaexpedice/hazelcast-locks-server
+    tag: "2.0"
+    pullPolicy: Always
+    pullSecret: ""
+  instance: akubrasync
+  user: dev
+  env:
+    JAVA_OPTS: "-Xms512M -Xmx2G -Dhazelcast.diagnostics.enabled=true"
+  resources:
+    requests:
+      cpu: 100m
+      memory: 640Mi
+    limits:
+      cpu: 500m
+      memory: 3Gi
+
+# ---------------------------------------------------------------------------
+# Database configuration — cnpg (CloudNative-PG) or pg (in-chart Deployment) mode.
+# Switch between modes with databases.mode.
+# JDBC URL is always chart-built; JDBC_* in processManager.env are ignored at runtime.
+# ---------------------------------------------------------------------------
+databases:
+  # Deployment mode:
+  # - cnpg: renders CNPG Cluster + bootstrap Secret resources (requires cnpg operator)
+  # - pg:   renders in-chart PostgreSQL Deployment/Service/PVC/Secret resources
+  mode: cnpg
+
+  # Shared PG image defaults used in pg mode.
+  pg:
+    image: postgres
+    version: "16"
+    pullSecret: ""
+
+  # Core app DB.
+  kramerius:
+    mode: ""          # per-role override: cnpg | pg | external. Empty = inherit databases.mode.
+    existingSecret: ""  # when set: no chart Secret created; secretKeyRef uses this name. jdbc.password still needed for configuration.properties.
+    external:
+      host: ""        # required when mode=external
+      port: 5432
+    jdbc:
+      database: kramerius
+      username: kramerius
+      password: changeme
+      params: ""
+    cnpg:
+      cluster:
+        name: kramerius-db
+        instances: 1
+        maxConnections: ""
+      storage:
+        size: 10Gi
+        storageClass: ""
+    pg:
+      host: ""
+      port: 5432
+      storage:
+        size: 10Gi
+        storageClass: ""
+
+  # Process manager DB.
+  process:
+    mode: ""          # per-role override: cnpg | pg | external. Empty = inherit databases.mode.
+    existingSecret: ""  # when set: no chart Secret created; secretKeyRef uses this name.
+    external:
+      host: ""        # required when mode=external
+      port: 5432
+    jdbc:
+      database: process
+      username: process
+      password: changeme
+      params: ""
+    cnpg:
+      cluster:
+        name: process-db
+        instances: 1
+        maxConnections: ""
+      storage:
+        size: 10Gi
+        storageClass: ""
+    pg:
+      host: ""
+      port: 5432
+      storage:
+        size: 10Gi
+        storageClass: ""
+
+  # Users DB.
+  users:
+    mode: ""          # per-role override: cnpg | pg | external. Empty = inherit databases.mode.
+    existingSecret: ""  # when set: no chart Secret created; secretKeyRef uses this name. jdbc.password still needed for configuration.properties.
+    external:
+      host: ""        # required when mode=external
+      port: 5432
+    jdbc:
+      database: users
+      username: users
+      password: changeme
+      params: ""
+    cnpg:
+      cluster:
+        name: users-db
+        instances: 1
+        maxConnections: ""
+      storage:
+        size: 10Gi
+        storageClass: ""
+    pg:
+      host: ""
+      port: 5432
+      storage:
+        size: 10Gi
+        storageClass: ""
+
+  # Cache DB (CDK mode only — only rendered when cdk.enabled: true).
+  cache:
+    mode: ""          # per-role override: cnpg | pg | external. Empty = inherit databases.mode.
+    existingSecret: ""  # when set: no chart Secret created; secretKeyRef uses this name. jdbc.password still needed for configuration.properties.
+    external:
+      host: ""        # required when mode=external
+      port: 5432
+    jdbc:
+      database: cache
+      username: cache
+      password: changeme
+      params: ""
+    cnpg:
+      cluster:
+        name: cache-db
+        instances: 1
+        maxConnections: ""
+      storage:
+        size: 10Gi
+        storageClass: ""
+    pg:
+      host: ""
+      port: 5432
+      storage:
+        size: 10Gi
+        storageClass: ""
+
+# Akubra patterns (pod-mount paths are fixed by the chart).
+akubraConfig:
+  enabled: true
+  # Filled into configuration.properties as `objectStore.pattern`.
+  objectStore:
+    pattern: "##/##/##"
+  # Filled into configuration.properties as `datastreamStore.pattern`.
+  datastreamStore:
+    pattern: "##/##/##"
 
 # Shared data volumes: each entry is either type "nfs" or type "pvc".
 # - nfs: direct NFS mount in the pod (nfsServer + nfsPath required).
@@ -24,7 +709,8 @@ storages:
   # Fallback NFS server used for any storage entry with type: nfs and no nfsServer set.
   defaultNfsServer: ""
 
-  # Directory holding the Java agent JAR; when javaagent.enabled, that file is mounted as /root/.kramerius4/javaagent.jar (see javaagent.jarFile).
+  # Directory holding shared Java agent JARs used by per-component javaagents
+  # and observability.otel.jarName.
   javaagents:
     # Example
     # type: nfs
@@ -103,6 +789,172 @@ storages:
     # size: 10Gi
     # mountOptions: []
 
+# ---------------------------------------------------------------------------
+# Media conversion configuration (written into configuration.properties for workers).
+# Controls how Kramerius workers generate image tiles, audio derivatives, etc.
+#
+# Key mapping → configuration.properties:
+#   convert.imageserver.enabled          → convert.useImageServer
+#   convert.imageserver.directory        → convert.imageServerDirectory
+#   convert.imageserver.useContract      → convert.useContractAsSubfoldersName
+#   convert.imageserver.subfolders       → convert.imageServerDirectorySubfolders
+#   convert.imageserver.removeExtensions → convert.imageServerSuffix.removeFilenameExtensions
+#   convert.imageserver.tilesUrlPrefix   → convert.imageServerTilesURLPrefix
+#   convert.imageserver.imagesUrlPrefix  → convert.imageServerImagesURLPrefix
+#   convert.imageserver.suffixBig        → convert.imageServerSuffix.big
+#   convert.imageserver.suffixThumb      → convert.imageServerSuffix.thumb
+#   convert.imageserver.suffixPreview    → convert.imageServerSuffix.preview
+#   convert.imageserver.suffixTiles      → convert.imageServerSuffix.tiles
+#   convert.audioserver.enabled          → convert.useAudioServer
+#   convert.audioserver.urlPrefix        → convert.audioServerURLPrefix
+#   convert.audioserver.directory        → convert.audioServerDirectory
+#   convert.audioserver.subfolders       → convert.audioServerDirectorySubfolders
+# ---------------------------------------------------------------------------
+convert:
+  imageserver:
+    enabled: false
+    directory: ""            # e.g. /mzk — base directory on the imageserver
+    useContract: true        # use contract name as subfolder (vs. root document UUID)
+    subfolders: true         # enable directory subfoldering
+    removeExtensions: true   # strip filename extensions from image suffix URLs
+    tilesUrlPrefix: ""       # e.g. https://imageserver.example.com/path/
+    imagesUrlPrefix: ""      # e.g. http://imageserver.example.com/path/
+    suffixBig: "/big.jpg"
+    suffixThumb: "/thumb.jpg"
+    suffixPreview: "/preview.jpg"
+    suffixTiles: ""
+  audioserver:
+    enabled: false
+    urlPrefix: ""            # e.g. http://audioserver.example.com
+    directory: ""            # e.g. /mnt/audioserver
+    subfolders: true
+
+# ---------------------------------------------------------------------------
+# Observability stack (Vector + ClickHouse + HyperDX) and OTEL settings
+# ---------------------------------------------------------------------------
+observability:
+  enabled: false
+
+  vector:
+    image:
+      repository: timberio/vector
+      tag: "0.43.0-alpine"
+      pullPolicy: IfNotPresent
+      pullSecret: ""
+    pipeline: ""
+    geoip:
+      # Image for the GeoIP database downloader (geoip-init Job and geoip-updater CronJob).
+      image:
+        repository: alpine
+        tag: "3"
+        pullPolicy: IfNotPresent
+      updater:
+        # Cron schedule for the monthly DB refresh. Default: 5th of each month at 04:00.
+        schedule: "0 4 5 * *"
+    resources:
+      requests:
+        cpu: "100m"
+        memory: "128Mi"
+      limits:
+        cpu: "500m"
+        memory: "512Mi"
+    buffer:
+      storage:
+        storageClass: ""
+        size: ""
+
+  clickhouse:
+    # Required when observability.enabled=true.
+    # Generate password: openssl rand -hex 32
+    user: ""
+    password: ""
+    image:
+      repository: clickhouse/clickhouse-server
+      tag: "25.4-alpine"
+      pullPolicy: IfNotPresent
+      pullSecret: ""
+    storage:
+      storageClass: ""
+      size: 256Gi
+    retentionDays: 90
+    resources:
+      requests:
+        cpu: "500m"
+        memory: "2Gi"
+      limits:
+        cpu: "4"
+        memory: "16Gi"
+
+  hyperdx:
+    image:
+      repository: hyperdx/hyperdx
+      tag: "latest"
+      pullPolicy: IfNotPresent
+      pullSecret: ""
+    # Required when observability.enabled=true. Generate: openssl rand -hex 32
+    apiKey: ""
+    resources:
+      requests:
+        cpu: "100m"
+        memory: "256Mi"
+      limits:
+        cpu: "1"
+        memory: "1Gi"
+
+  mongodb:
+    image:
+      repository: mongo
+      tag: "7"
+      pullPolicy: IfNotPresent
+      pullSecret: ""
+    storage:
+      storageClass: ""
+      size: "1Gi"
+    resources:
+      requests:
+        cpu: "100m"
+        memory: "256Mi"
+      limits:
+        cpu: "500m"
+        memory: "1Gi"
+
+  otel:
+    jarName: ""
+    protocol: grpc
+    collector:
+      enabled: false
+      replicas: 1
+      image:
+        repository: otel/opentelemetry-collector-contrib
+        tag: "0.104.0"
+        pullPolicy: IfNotPresent
+        pullSecret: ""
+      resources:
+        requests:
+          cpu: "100m"
+          memory: "256Mi"
+        limits:
+          cpu: "1"
+          memory: "1Gi"
+      decisionWait: 10s
+      numTraces: 50000
+      expectedNewTracesPerSec: 1000
+      latencyThresholdMs: 1000
+      probabilisticPercentage: 10
+      config: ""
+    krameriusPublic:
+      enabled: false
+      includeMethods: []
+    krameriusCurator:
+      enabled: false
+      includeMethods: []
+    processManager:
+      enabled: false
+      includeMethods: []
+    workersDefault:
+      enabled: false
+      includeMethods: []
+
 # Keycloak adapter: drives keycloak.json (public/curator) and Keycloak lines in configuration.properties.
 auth:
   keycloak:
@@ -116,17 +968,6 @@ auth:
     # When true, adds use-resource-role-mappings to keycloak.json
     useResourceRoleMappings: false
     policyEnforcer: {}
-
-# Shared Tomcat logging.properties for public, curator, process-manager, and all workers.
-tomcatShared:
-  loggingProperties: ""
-
-# Akubra patterns (pod-mount paths are fixed by the chart).
-akubraConfig:
-  # Filled into configuration.properties as `objectStore.pattern`.
-  objectStorePattern: "##/##/##"
-  # Filled into configuration.properties as `datastreamStore.pattern`.
-  datastreamStorePattern: "##/##/##"
 
 # Solr endpoints (used in configuration.properties).
 solrConfig:
@@ -142,488 +983,36 @@ solrConfig:
   logs: ""
   # Monitor endpoint (goes to `api.monitor.point`).
   monitor: ""
+  # Optional monitor threshold (goes to `api.monitor.threshold`).
+  monitorThreshold: 1000
+  # CDK-only Solr updates endpoint (goes to `solrUpdatesHost`).
+  updates: ""
+  # CDK-only Solr reharvest endpoint (goes to `solrReharvestHost`).
+  reharvest: ""
+  # Apache HttpClient tuning for Solr connections.
+  # Keys map to solr.apache.client.* in configuration.properties.
+  clientConfig:
+    maxConnections: 200
+    maxPerRoute: 100
+    connectTimeout: 120000
+    responseTimeout: 120000
 
-# JVM -javaagent for Kramerius public, curator, and workers (Tomcat / CATALINA_OPTS).
-# The JAR from storages.javaagents is mounted read-only at /root/.kramerius4/javaagent.jar (fixed path).
-# jarFile is the filename inside that volume (subPath).
-javaagent:
-  enabled: true
-  jarFile: opentelemetry-javaagent.jar
-  # Appended to -javaagent:/root/.kramerius4/javaagent.jar (OpenTelemetry often uses "=<config.properties>").
-  # If empty and configFile.enabled, the chart sets =<configFile.mountPath> automatically.
-  agentArgumentSuffix: ""
-  # Extra JVM/Tomcat flags merged into CATALINA_OPTS after your env.CATALINA_OPTS and -javaagent.
-  extraCatalinaOpts: ""
-  configFile:
-    enabled: false
-    key: javaagent.properties
-    mountPath: /root/.kramerius4/javaagent.properties
-    content: ""
-
-# ---------------------------------------------------------------------------
-# Hazelcast - lock server, used by apps and workers
-# ---------------------------------------------------------------------------
-hazelcast:
-  image:
-    repository: ceskaexpedice/hazelcast-locks-server
-    tag: "2.0"
-    pullPolicy: Always
-  env:
-    JAVA_OPTS: "-Xms512M -Xmx2G -Dhazelcast.diagnostics.enabled=true"
-  resources:
-    requests:
-      cpu: 100m
-      memory: 640Mi
-    limits:
-      cpu: 500m
-      memory: 3Gi
+# Global overlays (merged after chart-generated config). Use for environment-specific patches without forking values.
+shadow:
+  # Appended to merged CATALINA_OPTS / JAVA_OPTS on all Tomcat workloads (after OTEL). Per-component shadowCatalinaOpts is appended before this.
+  catalinaOpts: ""
+  # Extra key=value lines appended to configuration.properties for public, curator, and workers (after component extras).
+  configurationPropertiesExtra: ""
 
 # ---------------------------------------------------------------------------
-# CloudNative-PG (requires cnpg operator in the cluster).
-# Two separate Clusters: process-manager DB and Kramerius DB.
-# Process-manager JDBC credentials come from cnpg.processManager.password; JDBC_* in processManager.env below are ignored.
-# Kramerius apps: jdbc:postgresql://<cnpg.kramerius.cluster.name>-rw:5432/<database>, password from cnpg.kramerius.password.
+# CDK mode — disabled by default. Layer values.cdk.yaml to enable.
 # ---------------------------------------------------------------------------
-cnpg:
-  processManager:
-    cluster:
-      name: process-db
-      instances: 1
-      maxConnections: ""
-    storage:
-      size: 10Gi
-      storageClass: ""
-    password: changeme
-  kramerius:
-    cluster:
-      name: kramerius-db
-      instances: 1
-      maxConnections: ""
-    storage:
-      size: 10Gi
-      storageClass: ""
-    password: changeme
-
-# ---------------------------------------------------------------------------
-# Process Manager - schedules and distributes tasks to workers
-# ---------------------------------------------------------------------------
-processManager:
-  image:
-    repository: ceskaexpedice/process-manager
-    tag: "1.5"
-    pullPolicy: Always
-  env:
-    JAVA_OPTS: "-Xms512M -Xmx2G"
-    # JDBC_* entries are ignored at deploy time; process-manager uses CNPG bootstrap secret + cluster service.
-    JDBC_USERNAME: process
-    JDBC_PASSWORD: process
-    JDBC_URL: jdbc:postgresql://process-db-rw:5432/process
-  config:
-    configurationPropertiesExtra: ""
-    serverXml: ""
-  livenessProbe: {}
-  readinessProbe: {}
-  resources:
-    requests:
-      cpu: 100m
-      memory: 640Mi
-    limits:
-      cpu: 500m
-      memory: 3Gi
-
-  # Tomcat logs (PVC) configuration for the process-manager StatefulSet.
-  # Each replica gets its own PVC via volumeClaimTemplates.
-  tomcatLogs:
-    type: pvc
-    nfsServer: ""
-    nfsPath: ""
-    existingClaim: ""
-    storageClass: nfs
-    size: 5Gi
-
-# ---------------------------------------------------------------------------
-# Kramerius Public - read-only app instances, scalable
-# ---------------------------------------------------------------------------
-krameriusPublic:
-  replicas: 1
-  image:
-    repository: ceskaexpedice/kramerius
-    tag: "7.2.0"
-    pullPolicy: Always
-  env:
-    CATALINA_OPTS: "-Xms4g -Xmx8g"
-    TOMCAT_PASSWORD: "changeme"
-  javaagentExtraCatalinaOpts: ""
-  config:
-    configurationPropertiesExtra: ""
-    serverXml: ""
-  livenessProbe: {}
-  readinessProbe: {}
-  resources:
-    requests:
-      cpu: "500m"
-      memory: 6Gi
-    limits:
-      cpu: "2000m"
-      memory: 11Gi
-
-  # Tomcat logs (PVC) configuration for the kramerius-public StatefulSet.
-  tomcatLogs:
-    type: pvc
-    nfsServer: ""
-    nfsPath: ""
-    existingClaim: ""
-    storageClass: nfs
-    size: 5Gi
-
-# ---------------------------------------------------------------------------
-# Kramerius Curator - single read-write instance
-# ---------------------------------------------------------------------------
-krameriusCurator:
-  replicas: 1
-  image:
-    repository: ceskaexpedice/kramerius
-    tag: "7.2.0"
-    pullPolicy: Always
-  env:
-    CATALINA_OPTS: "-Xms4g -Xmx8g"
-    TOMCAT_PASSWORD: "changeme"
-  javaagentExtraCatalinaOpts: ""
-  config:
-    configurationPropertiesExtra: ""
-    serverXml: ""
-  livenessProbe: {}
-  readinessProbe: {}
-  resources:
-    requests:
-      cpu: "250m"
-      memory: 6Gi
-    limits:
-      cpu: "1000m"
-      memory: 11Gi
-
-  # Tomcat logs (PVC) configuration for the kramerius-curator StatefulSet.
-  tomcatLogs:
-    type: pvc
-    nfsServer: ""
-    nfsPath: ""
-    existingClaim: ""
-    storageClass: nfs
-    size: 5Gi
-
-# ---------------------------------------------------------------------------
-# Default worker image - used when a worker group does not specify its own
-# ---------------------------------------------------------------------------
-defaultWorkerImage:
-  repository: ceskaexpedice/curator-worker
-  tag: "7.2.0"
-  pullPolicy: Always
-
-# Tomcat logs (PVC) configuration for all worker StatefulSets.
-# Each worker StatefulSet still creates its own per-replica volumeClaimTemplates.
-workerTomcatLogs:
-  type: pvc
-  nfsServer: ""
-  nfsPath: ""
-  existingClaim: ""
-  storageClass: nfs
-  size: 5Gi
-
-# Process platform logs (PVC) configuration for all worker StatefulSets.
-# Mounted at /root/.processplatform; each pod writes to its own subdirectory (named after WORKER_ID / POD_NAME).
-# Each worker StatefulSet creates its own per-replica volumeClaimTemplates.
-workerProcessLogs:
-  type: pvc
-  nfsServer: ""
-  nfsPath: ""
-  existingClaim: ""
-  storageClass: nfs
-  size: 5Gi
-
-# ---------------------------------------------------------------------------
-# Worker groups - define any number of groups
-# Each group becomes its own StatefulSet + headless Service.
-# Workers register themselves with the process manager using their pod-unique URL.
-#
-# Fields per group:
-#   name        - group name, used in resource names
-#   replicas    - number of worker pod replicas
-#   image       - optional, overrides defaultWorkerImage
-#   profilesSubset - optional, sets PROFILES_SUBSET env var (limits process types)
-#   env         - additional env vars merged on top of defaults
-#   config      - server.xml, lp.xml, and configurationPropertiesExtra (merged with chart base generated from akubraConfig/solrConfig)
-#   javaagentExtraCatalinaOpts - optional; appended to CATALINA_OPTS after javaagent.extraCatalinaOpts
-#   livenessProbe  - optional k8s probe spec; omitted when empty
-#   readinessProbe - optional k8s probe spec; omitted when empty
-#   resources   - k8s resource requests/limits
-# ---------------------------------------------------------------------------
-workerGroups:
-  - name: curator
-    replicas: 1
-    # image:
-    #   repository: ceskaexpedice/curator-worker
-    #   tag: "7.2.0"
-    # profilesSubset: "import,new_indexer_index_object"
-    workerLoopSleepSecs: 10
-    workerLoopPrintSecs: 30
-    env:
-      CATALINA_OPTS: "-Xms512M -Xmx2G"
-    javaagentExtraCatalinaOpts: ""
-    config:
-      configurationPropertiesExtra: ""
-      serverXml: ""
-      lpXml: ""
-    livenessProbe: {}
-    readinessProbe: {}
-    resources:
-      requests:
-        cpu: 250m
-        memory: 640Mi
-      limits:
-        cpu: 1500m
-        memory: 3Gi
-
-  # Example second worker group restricted to import/indexing only:
-  # - name: ingest
-  #   replicas: 2
-  #   profilesSubset: "import,new_indexer_index_object"
-  #   workerLoopSleepSecs: 10
-  #   workerLoopPrintSecs: 30
-  #   env:
-  #     CATALINA_OPTS: "-Xms512M -Xmx2G"
-  #   config:
-  #     configurationPropertiesExtra: ""
-  #     serverXml: ""
-  #     lpXml: ""
-  #   resources:
-  #     requests:
-  #       cpu: 250m
-  #       memory: 640Mi
-  #     limits:
-  #       cpu: 1500m
-  #       memory: 3Gi
-
-# ---------------------------------------------------------------------------
-# Edge gateway: OpenResty + Lua (curatorPathPrefix -> curator, else public).
-# Request + download quotas use in-pod lua_shared_dict (no Redis); per replica, in-memory, reset on pod restart.
-# Ingress main host points at Service "gateway-openresty".
-# ---------------------------------------------------------------------------
-gateway:
-  image:
-    repository: openresty/openresty
-    tag: "1.27.1.2-3-alpine"
-    pullPolicy: IfNotPresent
-  # CoreDNS / cluster DNS (variable proxy_pass to kramerius backends). Adjust per cluster.
-  resolver: kube-dns.kube-system.svc.cluster.local valid=30s ipv6=off
-  # CIDRs of trusted upstream proxies (nginx-ingress pod/node CIDR). Only these IPs are trusted
-  # to set X-Forwarded-For. $remote_addr is used for rate limiting — not raw XFF — so this must
-  # be set correctly to prevent clients spoofing their IP to bypass rate limits.
-  trustedProxyCidrs:
-    - 10.0.0.0/8
-    - 172.16.0.0/12
-    - 192.168.0.0/16
-  # ngx.shared memory for rate (gateway_rl) + download (gateway_dl) counters; increase if many distinct IPs/keys.
-  luaSharedDict:
-    rateMisc: 1m
-    rateLimit: 32m
-    downloadQuota: 64m
-  clientMaxBodySize: 512m
-  # Gateway routes this URI prefix to kramerius-curator (RW); everything else to kramerius-public. Set "" to disable.
-  curatorPathPrefix: "/search/api/admin/"
-  # Optional custom text prepended to the 429 rate-limit body before the generated details.
-  # When empty and error429Details is true, only the generated details are shown.
-  # When empty and error429Details is false, a plain "Too Many Requests" is shown.
-  error429: ""
-  # Optional custom text prepended to the 429 download-quota body before the generated details.
-  # When empty and error429DownloadDetails is true, only the generated details are shown.
-  # When empty and error429DownloadDetails is false, a plain fallback message is shown.
-  error429Download: ""
-  # Set to false to suppress the auto-generated rate-limit info (limits table, peak hours, retry guidance)
-  # from the 429 body. Ignored when error429 is set and details are not needed alongside it.
-  error429Details: true
-  # Set to false to suppress the auto-generated download-quota info (quota table, peak hours, script hints)
-  # from the 429 download body.
-  error429DownloadDetails: true
-  proxy:
-    connectTimeout: 10s
-    sendTimeout: 120s
-    readTimeout: 120s
-  # Peak window in local wall time (gateway pod TZ = values.timezone). Half-open [from, to) in hours 0-23; if from > to, spans midnight.
-  # When enabled, set peak/off-peak caps per rule: rateLimits use peakMaxRequests/offPeakMaxRequests; downloadLimits use peakMaxBytes/offPeakMaxBytes. Otherwise maxRequests / maxBytes apply at all times.
-  peakHours:
-    enabled: false
-    from: 9
-    to: 18
-  # Client IPs or CIDRs exempt from both request rate limits and download quotas.
-  # Supports exact IPs ("1.2.3.4") and CIDR notation ("10.0.0.0/8").
-  rateLimitWhitelist: []
-  # Longest pathPrefix wins. One counter bucket per client IP + matched pathPrefix + time window.
-  rateLimits:
-    - pathPrefix: "/"
-      maxRequests: 600
-      windowSeconds: 60
-  # Download quota per client IP + matched pathPrefix + window. Same peakHours as rateLimits. lua_shared_dict gateway_dl.
-  # Pre-check uses upstream Content-Length when present; final accounting uses body_bytes_sent (200/206 only).
-  # Chunked responses without Content-Length are counted only in log phase (may slightly exceed max for one response).
-  # Set downloadLimits: [] to disable.
-  downloadLimits:
-    - pathPrefix: "/"
-      maxBytes: 5368709120
-      windowSeconds: 3600
-  resources:
-    requests:
-      cpu: 100m
-      memory: 128Mi
-    limits:
-      cpu: "1000m"
-      memory: 512Mi
-
-# ---------------------------------------------------------------------------
-# Admin client
-# ---------------------------------------------------------------------------
-adminClient:
-  enabled: true
-  replicas: 1
-  image:
-    repository: registry.example.com/k7-admin
-    tag: latest
-    pullPolicy: Always
-  config:
-    globalsJs: ""
-  resources:
-    requests:
-      cpu: "10m"
-      memory: "32Mi"
-    limits:
-      cpu: "50m"
-      memory: "64Mi"
-
-# ---------------------------------------------------------------------------
-# Ingress — three objects: gateway, admin, process-manager (workers have no ingress).
-# ---------------------------------------------------------------------------
-ingress:
-  enabled: true
-  className: nginx
-  annotations:
-    cert-manager.io/cluster-issuer: letsencrypt
-    nginx.ingress.kubernetes.io/real-ip-header: X-Forwarded-For
-  # App traffic: OpenResty gateway -> curator (admin API prefix) or public.
-  host: "k7.example.com"
-  tls:
-    secretName: kramerius-gateway-tls
-  # Admin static UI (Ingress kramerius-admin). Leave oauthProtected false for public admin host.
-  admin:
-    host: "admin.k7.example.com"
-    oauthProtected: false
-    tls:
-      secretName: kramerius-admin-tls
-  # Shared oauth2-proxy endpoints when admin/processManager oauthProtected is true.
-  oauth:
-    authUrl: "https://auth.example.com/oauth2/auth"
-    authSignin: "https://auth.example.com/oauth2/start"
-  # Process-manager UI/API (Ingress kramerius-process-manager). Set host to "" to omit.
-  processManager:
-    host: "process-manager.k7.example.com"
-    oauthProtected: false
-    tls:
-      secretName: kramerius-process-manager-tls
-  # Kibana UI (only created when elk.enabled). Whitelist restricts access to internal networks.
-  kibana:
-    host: "kibana.k7.example.com"
-    oauthProtected: false
-    tls:
-      secretName: kibana-tls
-    whitelistSourceRange: "10.0.0.0/8,192.168.0.0/16,172.16.0.0/12"
-
-# ---------------------------------------------------------------------------
-# ELK stack — Elasticsearch + Kibana + Filebeat for gateway access-log analytics.
-# Filebeat reads the gateway's JSON access log from a shared PVC and ships it
-# to a single-node Elasticsearch instance running in the same namespace.
-# ---------------------------------------------------------------------------
-elk:
+cdk:
   enabled: false
 
-  # Number of days to retain access-log indices before automatic deletion.
-  retentionDays: 90
+# Default StorageClass used for PVC-backed volumes when `storageClass` is empty.
+# Applies to:
+# - `storages.*.type: pvc`
+# - per-component tomcatLogs PVCs (`krameriusPublic.tomcatLogs`, etc.)
+defaultStorageClass: ""
 
-  elasticsearch:
-    image:
-      repository: elasticsearch
-      tag: "9.1.2"
-      pullPolicy: IfNotPresent
-    env:
-      discoveryType: single-node
-      javaOpts: "-Xms1g -Xmx8g"
-      xpackSecurityEnabled: "false"
-    storage:
-      storageClass: ""
-      size: 128Gi
-    resources:
-      requests:
-        cpu: "250m"
-        memory: "2Gi"
-      limits:
-        cpu: "1"
-        memory: "8Gi"
-
-  kibana:
-    image:
-      repository: kibana
-      tag: "9.1.2"
-      pullPolicy: IfNotPresent
-    resources:
-      requests:
-        cpu: "250m"
-        memory: "512Mi"
-      limits:
-        cpu: "1"
-        memory: "2Gi"
-
-  filebeat:
-    image:
-      repository: elastic/filebeat
-      tag: "9.1.2"
-      pullPolicy: IfNotPresent
-    storage:
-      storageClass: ""
-      size: 1Gi
-    resources:
-      requests:
-        cpu: "100m"
-        memory: "128Mi"
-      limits:
-        cpu: "1"
-        memory: "1Gi"
-
-  # In-memory emptyDir shared between gateway and filebeat sidecar for access logs.
-  # Backed by tmpfs (RAM); counts against the pod's memory limit.
-  gatewayLogs:
-    size: 256Mi
-
-  # Slack alerting: monitors Elasticsearch access logs for 429s and 5xx errors.
-  # Only deployed when slackWebhookUrl is set.
-  slackAlerts:
-    # Slack incoming webhook URL. Leave empty to disable alerting.
-    slackWebhookUrl: ""
-    # How often the CronJob runs (cron schedule expression).
-    schedule: "*/10 * * * *"
-    # Time window to query (must match the schedule interval), in minutes.
-    windowMinutes: 10
-    # Minimum number of 429 responses from a single IP to trigger a Slack alert.
-    threshold429: 50
-    # Set to false to suppress 5xx server error alerts.
-    report5xx: true
-    # Comma-separated list of Slack emoji shortcodes to randomly prefix the
-    # "Investigate in Kibana" link (e.g. ":kibana:,:mag:,:bar_chart:").
-    # Leave empty to show the link without an emoji prefix.
-    emoji: ""
-    # Image used for the CronJob pod (needs curl + jq).
-    image:
-      repository: dwdraju/alpine-curl-jq
-      tag: "latest"
-      pullPolicy: IfNotPresent
-
-# ---------------------------------------------------------------------------
-# Timezone config (injected into all pods)
-# ---------------------------------------------------------------------------
-timezone: Europe/Prague

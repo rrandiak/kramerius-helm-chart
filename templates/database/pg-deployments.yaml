@@ -1,0 +1,6 @@
+{{- range splitList "," (include "kramerius.database.roles" . | trim) }}
+{{- if eq (include "kramerius.database.roleMode" (dict "root" $ "role" .)) "pg" }}
+---
+{{ include "kramerius.database.pgDeployment" (dict "root" $ "role" .) }}
+{{- end }}
+{{- end }}

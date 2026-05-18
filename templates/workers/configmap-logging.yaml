@@ -1,0 +1,12 @@
+{{/* Workers — shared Tomcat logging.properties ConfigMap (all worker groups mount this) */}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: workers-logging
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "kramerius.labels" . | nindent 4 }}
+data:
+  logging.properties: |
+    {{- $workersDefaults := (.Values.workersDefaults | default dict) }}
+    {{- include "kramerius.defaultLoggingProperties" (dict "root" . "value" ($workersDefaults.loggingProperties | default "")) | nindent 4 }}

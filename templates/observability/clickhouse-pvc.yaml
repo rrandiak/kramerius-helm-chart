@@ -1,0 +1,21 @@
+{{- if eq (include "kramerius.observability.enabled" .) "true" }}
+{{- $c := ((.Values.observability | default dict).clickhouse | default dict) }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: clickhouse-data
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "kramerius.labels" . | nindent 4 }}
+    app.kubernetes.io/name: {{ include "kramerius.observability.clickhouseName" . }}
+    app.kubernetes.io/component: observability
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: {{ (default "256Gi" ($c.storage | default dict).size) }}
+  {{- if ($c.storage | default dict).storageClass }}
+  storageClassName: {{ ($c.storage | default dict).storageClass | quote }}
+  {{- end }}
+{{- end }}

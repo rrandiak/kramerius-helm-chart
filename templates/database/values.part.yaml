@@ -1,0 +1,150 @@
+# database values (both deployment modes)
+#
+# Shared contract for all DB roles. JDBC URL is always chart-built from:
+#   jdbc:postgresql://<host>:<port>/<database>[?<params>]
+# Host/port are selected by databases.mode.
+#
+# IMPORTANT: Never commit real passwords to version control.
+
+databases:
+  # Deployment mode:
+  # - cnpg: renders CNPG Cluster + bootstrap Secret resources
+  # - pg: renders in-chart PostgreSQL Deployment/Service/PVC/Secret resources
+  mode: cnpg
+
+  # Shared PG image defaults used in pg mode.
+  pg:
+    image: postgres
+    version: "16"
+    pullSecret: ""
+
+  # Core app DB.
+  kramerius:
+    # Per-role mode override: cnpg | pg | external. Empty = inherit databases.mode.
+    mode: ""
+    # When set: chart does not create a Secret for this role; all secretKeyRef consumers
+    # use this name. The external Secret must have "username" and "password" keys.
+    # Note: jdbc.password is still required for configuration.properties embedding.
+    existingSecret: ""
+    # Required when mode=external.
+    external:
+      host: ""
+      port: 5432
+    jdbc:
+      database: kramerius
+      username: kramerius
+      password: changeme
+      params: ""
+    cnpg:
+      cluster:
+        name: kramerius-db
+        instances: 1
+        maxConnections: ""
+      storage:
+        size: 10Gi
+        storageClass: ""
+    pg:
+      # Optional overrides. By default, chart uses service "kramerius-pg" and port 5432.
+      host: ""
+      port: 5432
+      storage:
+        size: 10Gi
+        storageClass: ""
+
+  # Process manager DB (role key `process` → default CNPG name process-db).
+  process:
+    # Per-role mode override: cnpg | pg | external. Empty = inherit databases.mode.
+    mode: ""
+    # When set: chart does not create a Secret for this role; secretKeyRef in process-manager
+    # uses this name. The external Secret must have "username" and "password" keys.
+    existingSecret: ""
+    # Required when mode=external.
+    external:
+      host: ""
+      port: 5432
+    jdbc:
+      database: process
+      username: process
+      password: changeme
+      params: ""
+    cnpg:
+      cluster:
+        name: process-db
+        instances: 1
+        maxConnections: ""
+      storage:
+        size: 10Gi
+        storageClass: ""
+    pg:
+      # Optional overrides. By default, chart uses service "process-pg" and port 5432.
+      host: ""
+      port: 5432
+      storage:
+        size: 10Gi
+        storageClass: ""
+
+  # Users DB.
+  users:
+    # Per-role mode override: cnpg | pg | external. Empty = inherit databases.mode.
+    mode: ""
+    # When set: chart does not create a Secret for this role; all secretKeyRef consumers
+    # use this name. The external Secret must have "username" and "password" keys.
+    # Note: jdbc.password is still required for configuration.properties embedding.
+    existingSecret: ""
+    # Required when mode=external.
+    external:
+      host: ""
+      port: 5432
+    jdbc:
+      database: users
+      username: users
+      password: changeme
+      params: ""
+    cnpg:
+      cluster:
+        name: users-db
+        instances: 1
+        maxConnections: ""
+      storage:
+        size: 10Gi
+        storageClass: ""
+    pg:
+      # Optional overrides. By default, chart uses service "users-pg" and port 5432.
+      host: ""
+      port: 5432
+      storage:
+        size: 10Gi
+        storageClass: ""
+
+  # Cache DB.
+  cache:
+    # Per-role mode override: cnpg | pg | external. Empty = inherit databases.mode.
+    mode: ""
+    # When set: chart does not create a Secret for this role; all secretKeyRef consumers
+    # use this name. The external Secret must have "username" and "password" keys.
+    # Note: jdbc.password is still required for configuration.properties embedding.
+    existingSecret: ""
+    # Required when mode=external.
+    external:
+      host: ""
+      port: 5432
+    jdbc:
+      database: cache
+      username: cache
+      password: changeme
+      params: ""
+    cnpg:
+      cluster:
+        name: cache-db
+        instances: 1
+        maxConnections: ""
+      storage:
+        size: 10Gi
+        storageClass: ""
+    pg:
+      # Optional overrides. By default, chart uses service "cache-pg" and port 5432.
+      host: ""
+      port: 5432
+      storage:
+        size: 10Gi
+        storageClass: ""

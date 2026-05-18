@@ -1,0 +1,103 @@
+{{- if .Values.gateway.managementClient.enabled }}
+{{- $mc := .Values.gateway.managementClient }}
+{{- $slack := $mc.slack | default dict }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gateway-management-client
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "kramerius.labels" . | nindent 4 }}
+    {{- include "kramerius.gateway.management.matchLabels" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "kramerius.gateway.management.matchLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "kramerius.gateway.management.matchLabels" . | nindent 8 }}
+      annotations:
+        checksum/gateway-management-client: {{ include "kramerius.checksum.gatewayManagementPod" . | quote }}
+    spec:
+      {{- if $mc.image.pullSecret }}
+      imagePullSecrets:
+        - name: {{ $mc.image.pullSecret | quote }}
+      {{- end }}
+      containers:
+        - name: management
+          image: {{ $mc.image.repository }}:{{ $mc.image.tag }}
+          imagePullPolicy: {{ $mc.image.pullPolicy | default "IfNotPresent" }}
+          workingDir: /app
+          ports:
+            - name: http
+              containerPort: {{ $mc.port | default 8080 }}
+          env:
+            - name: PYTHONPATH
+              value: /app
+            - name: TZ
+              value: {{ .Values.timezone | quote }}
+            {{- if or .Values.gateway.managementApi.existingSecret .Values.gateway.managementApi.secret }}
+            - name: MANAGEMENT_API_SECRET
+              {{- if .Values.gateway.managementApi.existingSecret }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.gateway.managementApi.existingSecret }}
+                  key: secret
+              {{- else }}
+              value: {{ .Values.gateway.managementApi.secret | quote }}
+              {{- end }}
+            {{- end }}
+            {{- if or $slack.existingSecret $slack.signingSecret }}
+            - name: SLACK_SIGNING_SECRET
+              {{- if $slack.existingSecret }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $slack.existingSecret }}
+                  key: signingSecret
+              {{- else }}
+              value: {{ $slack.signingSecret | quote }}
+              {{- end }}
+            {{- end }}
+            {{- if $slack.allowedTeams }}
+            - name: SLACK_ALLOWED_TEAMS
+              value: {{ join "," $slack.allowedTeams | quote }}
+            {{- end }}
+            {{- if $slack.allowedUsers }}
+            - name: SLACK_ALLOWED_USERS
+              value: {{ join "," $slack.allowedUsers | quote }}
+            {{- end }}
+            - name: REDIS_HOST
+              value: "gateway-redis.{{ .Values.namespace }}.svc.cluster.local"
+            - name: REDIS_PORT
+              value: "6379"
+            {{- $redis := .Values.gateway.redis | default dict }}
+            {{- if or $redis.existingSecret $redis.password }}
+            - name: REDIS_PASSWORD
+              {{- if $redis.existingSecret }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $redis.existingSecret }}
+                  key: password
+              {{- else }}
+              value: {{ $redis.password | quote }}
+              {{- end }}
+            {{- end }}
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -e
+              pip install --no-cache-dir --root-user-action=ignore -q redis
+              exec python /app/management.py {{ $mc.port | default 8080 }}
+          volumeMounts:
+            - name: app
+              mountPath: /app
+          resources:
+            {{- toYaml $mc.resources | nindent 12 }}
+      volumes:
+        - name: app
+          configMap:
+            name: gateway-management-client-app
+{{- end }}

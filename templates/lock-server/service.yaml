@@ -1,0 +1,19 @@
+{{/* Lock server — headless Service for Hazelcast (clusterIP: None, port 5701) */}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: hazelcast
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "kramerius.labels" . | nindent 4 }}
+    app.kubernetes.io/name: hazelcast
+    app.kubernetes.io/component: lock-server
+spec:
+  clusterIP: None
+  selector:
+    {{- include "kramerius.lockServer.matchLabels" . | nindent 4 }}
+  ports:
+    - name: hazelcast
+      protocol: TCP
+      port: 5701
+      targetPort: 5701

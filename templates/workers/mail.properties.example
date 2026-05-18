@@ -1,0 +1,10 @@
+mail.from.user=***
+mail.smtp.user=***
+
+mail.smtp.host=***
+mail.smtp.startttls.enable=true | false
+mail.smtp.port=[port]
+
+mail.smtp.auth=true | false
+mail.smtp.socketFactory.port=[port]
+mail.smtp.socketFactory.class=javax.net.ssl.SSLSocketFactory

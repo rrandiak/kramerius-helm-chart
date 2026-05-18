@@ -1,0 +1,5 @@
+## Keycloak
+keycloak.tokenurl=https://login.kramerius.mzk.cz/realms/kramerius/protocol/openid-connect/token
+keycloak.clientId=krameriusClient
+keycloak.secret=<secret>
+

@@ -8,138 +8,287 @@
 
 namespace: kramerius
 
-imagePullSecrets:
-  - name: registry-pull-secret
-    dockerconfigjson: "eyAiYXV0aHMiOiB7fSB9"
-
 timezone: Europe/Prague
 
 defaultStorageClass: nfs-rwx
 
-storages:
-  # Fallback NFS server for all volumes with type: nfs and no explicit nfsServer.
-  defaultNfsServer: nfs.example.com
-
-  javaagents:
-    type: nfs
-    nfsServer: nfs.example.com      # explicit override; falls back to defaultNfsServer if omitted
-    nfsPath: /data/javaagents
-
-  import:
-    type: nfs
-    nfsServer: nfs.example.com
-    nfsPath: /data/kramerius/import
-
-  akubra-object-store:
-    type: pvc
-    existingClaim: ""               # set to reuse an existing PVC; chart skips PVC creation
-    storageClass: nfs-rwx
-    size: 2Ti
-
-  akubra-datastream-store:
-    type: pvc
-    existingClaim: ""
-    storageClass: nfs-rwx
-    size: 2Ti
-
-  imageserver:
-    type: nfs
-    nfsServer: nfs.example.com
-    nfsPath: /data/imageserver
-
-  audioserver:
-    type: nfs
-    nfsServer: nfs.example.com
-    nfsPath: /data/audioserver
-
-  pdfserver:
-    type: nfs
-    nfsServer: nfs.example.com
-    nfsPath: /data/pdfserver
-
-auth:
-  keycloak:
-    realm: kramerius
-    authServerUrl: https://keycloak.example.com/
-    sslRequired: external
-    resource: krameriusClient
-    secret: change-me
-    verifyTokenAudience: true
-    confidentialPort: 0
-    useResourceRoleMappings: true
-    policyEnforcer: {}
-
-tomcatShared:
-  loggingProperties: |
-    handlers = java.util.logging.ConsoleHandler
-    .handlers = java.util.logging.ConsoleHandler
-    java.util.logging.ConsoleHandler.level = FINE
-    java.util.logging.ConsoleHandler.formatter = java.util.logging.SimpleFormatter
-
-# Akubra patterns (paths are fixed by chart mounts).
-akubraConfig:
-  objectStorePattern: "##/##/##"
-  datastreamStorePattern: "##/##/##"
-
-# Solr endpoints used in configuration.properties.
-solrConfig:
-  search: "http://solr.example.com:8983/solr/search"
-  searchUseComposite: true
-  processing: ""
-  sdnnt: ""
-  logs: ""
-  monitor: ""
-
-javaagent:
+# ---------------------------------------------------------------------------
+# Networking / Edge (Ingress or Gateway API — workers are cluster-internal only)
+# ---------------------------------------------------------------------------
+networking:
   enabled: true
-  jarFile: opentelemetry-javaagent.jar
-  agentArgumentSuffix: ""           # auto-filled with =<configFile.mountPath> when configFile.enabled and this is empty
-  extraCatalinaOpts: "-Dotel.service.name=kramerius -Dotel.exporter.otlp.endpoint=http://otel-collector:4318"
-  configFile:
-    enabled: true
-    key: javaagent.properties
-    mountPath: /root/.kramerius4/javaagent.properties
-    content: |
-      otel.service.name=kramerius
-      otel.exporter.otlp.endpoint=http://otel-collector:4318
-      otel.traces.exporter=otlp
-      otel.metrics.exporter=none
-      otel.logs.exporter=none
+  mode: ingress
+  className: nginx
+  gatewayClassName: ""
+  api:
+    host: "k7.example.com"
+    tlsSecretName: kramerius-gateway-tls
+    annotations:
+      cert-manager.io/cluster-issuer: letsencrypt
+      nginx.ingress.kubernetes.io/real-ip-header: X-Forwarded-For
+  admin:
+    host: "admin.k7.example.com"
+    tlsSecretName: kramerius-admin-tls
+    annotations:
+      cert-manager.io/cluster-issuer: letsencrypt
+      nginx.ingress.kubernetes.io/real-ip-header: X-Forwarded-For
+  processManager:
+    host: "process-manager.k7.example.com"
+    tlsSecretName: kramerius-process-manager-tls
+    annotations:
+      cert-manager.io/cluster-issuer: letsencrypt
+      nginx.ingress.kubernetes.io/real-ip-header: X-Forwarded-For
+  gatewayManager:
+    host: "gateway-manager.k7.example.com"
+    tlsSecretName: gateway-manager-tls
+    annotations:
+      cert-manager.io/cluster-issuer: letsencrypt
+      nginx.ingress.kubernetes.io/real-ip-header: X-Forwarded-For
+  hyperdx:
+    host: "hyperdx.k7.example.com"
+    tlsSecretName: hyperdx-tls
+    annotations:
+      cert-manager.io/cluster-issuer: letsencrypt
+      nginx.ingress.kubernetes.io/real-ip-header: X-Forwarded-For
 
-hazelcast:
+gateway:
   image:
-    repository: ceskaexpedice/hazelcast-locks-server
-    tag: "2.0"
-    pullPolicy: Always
-  env:
-    JAVA_OPTS: "-Xms512M -Xmx2G -Dhazelcast.diagnostics.enabled=true"
+    repository: openresty/openresty
+    tag: "1.27.1.2-3-alpine"
+    pullPolicy: IfNotPresent
+    pullSecret: "registry-pull-secret"
+  resolver: kube-dns.kube-system.svc.cluster.local valid=30s ipv6=off
+  trustedProxyCidrs:
+    - 10.0.0.0/8
+    - 172.16.0.0/12
+    - 192.168.0.0/16
+  luaSharedDict:
+    rateMisc: 1m
+    rateLimit: 32m
+    downloadQuota: 64m
+  clientMaxBodySize: 512m
+  curatorPathPrefix: "/search/api/admin/"
+  proxy:
+    connectTimeout: 10s
+    sendTimeout: 120s
+    readTimeout: 120s
+  # Max requests per keep-alive connection.
+  keepaliveRequests: 10000
+  # Short informational line appended to all 429 bodies (e.g. contact info).
+  error429Info: "Contact support@example.com to request higher limits."
+  # Include current limit values in the 429 response body.
+  error429IncludeLimits: true
+  # Optional response caching (GET/HEAD). See gateway values.part.gateway.yaml for rule shape.
+  caching:
+    enabled: false
+    methods:
+      - GET
+      - HEAD
+    proxyCache:
+      inactive: 7d
+    memory:
+      dictSize: 64m
+      metaDictSize: 8m
+      maxEntryBytes: 2097152
+    disk:
+      emptyDirSizeLimit: 8Gi
+    # Example caching rules:
+    # rules:
+    #   - pathTemplates:
+    #       - "/search/api/{version}/search"
+    #     cacheType: lua_shared_dict
+    #     ttl: 60
+    #     minHits: 2
+    rules: []
+  rateLimiting:
+    rlBurst: 0.5
+    dlBurst: 0.5
+  pollIntervalSeconds: 5
+  redis:
+    password: ""
+    image:
+      repository: redis
+      tag: "7-alpine"
+      pullPolicy: IfNotPresent
+      pullSecret: ""
+    storage:
+      storageClass: ""
+      size: 1Gi
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        cpu: 200m
+        memory: 128Mi
+  # Bearer-token → username resolution (required for per-user rules).
+  userResolution:
+    enabled: true
+    cacheTtlSeconds: 300
+  # Management client — Python web UI for runtime rule/ban management.
+  managementClient:
+    enabled: true
+    port: 8080
+    slack:
+      signingSecret: ""
+    persistence:
+      enabled: true
+      storageClass: ""
+      size: 100Mi
+      existingClaim: ""
+    image:
+      repository: python
+      tag: "3.12-slim"
+      pullPolicy: IfNotPresent
+      pullSecret: "registry-pull-secret"
+    resources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+      limits:
+        cpu: 200m
+        memory: 256Mi
   resources:
     requests:
       cpu: 100m
-      memory: 640Mi
+      memory: 128Mi
     limits:
-      cpu: 500m
-      memory: 3Gi
+      cpu: "1000m"
+      memory: 512Mi
 
-cnpg:
-  processManager:
-    cluster:
-      name: process-db
-      instances: 3                  # HA: 3 instances (1 primary + 2 standbys)
-      maxConnections: ""
-    storage:
-      size: 50Gi
-      storageClass: fast-ssd
-    password: "a-very-strong-password"
-  kramerius:
-    cluster:
-      name: kramerius-db
-      instances: 3
-      maxConnections: ""
-    storage:
-      size: 100Gi
-      storageClass: fast-ssd
-    password: "another-very-strong-password"
+adminClient:
+  enabled: true
+  replicas: 1
+  image:
+    repository: registry.example.com/k7-admin
+    tag: "1.0.0"
+    pullPolicy: Always
+    pullSecret: "registry-pull-secret"
+  config:
+    userClientBaseUrl: "digitalniknihovna.cz/mzk"
+    keycloakLoginType: "all"
+    devMode: false
+    homeDashboard:
+      - type: processes
+      - type: indexing
+        subtype: object
+  resources:
+    requests:
+      cpu: "10m"
+      memory: "32Mi"
+    limits:
+      cpu: "50m"
+      memory: "64Mi"
+
+krameriusCommon:
+  client: "https://ceskadigitalniknihovna.cz/"
+  oai:
+    rowsInResults: 50
+    setEdmDataProvider: "Czech digital library"
+    setEdmProvider: "Czech digital library"
+  xForwardedFor: "172.24.*"
+  httpTimeout: 300000
+  defaultEduIdType: "idp"
+  acronym: "mzk"
+  sdnntAcronym: "mzk"
+  generatePdfMaxRange: 120
+  turnOffPdfCheck: false
+
+defaultLoggingProperties: |
+  handlers = java.util.logging.ConsoleHandler
+  .handlers = java.util.logging.ConsoleHandler
+  java.util.logging.ConsoleHandler.level = FINE
+  java.util.logging.ConsoleHandler.formatter = java.util.logging.SimpleFormatter
+
+krameriusPublic:
+  replicas: 3
+  image:
+    repository: ceskaexpedice/kramerius
+    tag: "7.2.0"
+    pullPolicy: Always
+  catalinaOptsMemory: "-Xms4g -Xmx8g"
+  env:
+    TOMCAT_PASSWORD: "a-very-strong-password"
+  config:
+    configurationPropertiesExtra: |
+      # public-only properties (optional)
+      jdbcLeakDetectionThreshold: "0"
+      jdbcMaximumPoolSize: "20"
+      jdbcConnectionTimeout: "30000"
+    serverXml: |
+      <!-- custom server.xml -->
+  livenessProbe:
+    httpGet:
+      path: /search/
+      port: 8080
+    initialDelaySeconds: 120
+    periodSeconds: 30
+    failureThreshold: 3
+  readinessProbe:
+    httpGet:
+      path: /search/
+      port: 8080
+    initialDelaySeconds: 90
+    periodSeconds: 10
+    failureThreshold: 3
+  resources:
+    requests:
+      cpu: "500m"
+      memory: 6Gi
+    limits:
+      cpu: "2000m"
+      memory: 11Gi
+
+  tomcatLogs:
+    type: pvc
+    existingClaim: ""
+    storageClass: nfs-rwx
+    size: 20Gi
+
+krameriusCurator:
+  replicas: 1
+  image:
+    repository: ceskaexpedice/kramerius
+    tag: "7.2.0"
+    pullPolicy: Always
+  catalinaOptsMemory: "-Xms4g -Xmx8g"
+  env:
+    TOMCAT_PASSWORD: "a-very-strong-password"
+  config:
+    configurationPropertiesExtra: |
+      # curator-only properties (e.g. import.directory)
+      jdbcLeakDetectionThreshold: "0"
+      jdbcMaximumPoolSize: "20"
+      jdbcConnectionTimeout: "30000"
+    serverXml: |
+      <!-- custom server.xml -->
+  livenessProbe:
+    httpGet:
+      path: /search/
+      port: 8080
+    initialDelaySeconds: 120
+    periodSeconds: 30
+    failureThreshold: 3
+  readinessProbe:
+    httpGet:
+      path: /search/
+      port: 8080
+    initialDelaySeconds: 90
+    periodSeconds: 10
+    failureThreshold: 3
+  resources:
+    requests:
+      cpu: "250m"
+      memory: 6Gi
+    limits:
+      cpu: "1000m"
+      memory: 11Gi
+
+  tomcatLogs:
+    type: pvc
+    existingClaim: ""
+    storageClass: nfs-rwx
+    size: 20Gi
 
 processManager:
   image:
@@ -184,122 +333,27 @@ processManager:
     storageClass: nfs-rwx
     size: 20Gi
 
-krameriusPublic:
-  replicas: 3
+workersDefaults:
   image:
-    repository: ceskaexpedice/kramerius
+    repository: ceskaexpedice/curator-worker
     tag: "7.2.0"
     pullPolicy: Always
-  env:
-    CATALINA_OPTS: "-Xms4g -Xmx8g"
-    TOMCAT_PASSWORD: "a-very-strong-password"
-  javaagentExtraCatalinaOpts: "-Dotel.service.name=kramerius-public"
-  config:
-    configurationPropertiesExtra: |
-      # public-only properties (optional)
-      jdbcLeakDetectionThreshold: "0"
-      jdbcMaximumPoolSize: "20"
-      jdbcConnectionTimeout: "30000"
-    serverXml: |
-      <!-- custom server.xml -->
-  livenessProbe:
-    httpGet:
-      path: /search/
-      port: 8080
-    initialDelaySeconds: 120
-    periodSeconds: 30
-    failureThreshold: 3
-  readinessProbe:
-    httpGet:
-      path: /search/
-      port: 8080
-    initialDelaySeconds: 90
-    periodSeconds: 10
-    failureThreshold: 3
-  resources:
-    requests:
-      cpu: "500m"
-      memory: 6Gi
-    limits:
-      cpu: "2000m"
-      memory: 11Gi
-
   tomcatLogs:
     type: pvc
     existingClaim: ""
     storageClass: nfs-rwx
     size: 20Gi
-
-krameriusCurator:
-  replicas: 1
-  image:
-    repository: ceskaexpedice/kramerius
-    tag: "7.2.0"
-    pullPolicy: Always
-  env:
-    CATALINA_OPTS: "-Xms4g -Xmx8g"
-    TOMCAT_PASSWORD: "a-very-strong-password"
-  javaagentExtraCatalinaOpts: "-Dotel.service.name=kramerius-curator"
-  config:
-    configurationPropertiesExtra: |
-      # curator-only properties (e.g. import.directory)
-      jdbcLeakDetectionThreshold: "0"
-      jdbcMaximumPoolSize: "20"
-      jdbcConnectionTimeout: "30000"
-    serverXml: |
-      <!-- custom server.xml -->
-  livenessProbe:
-    httpGet:
-      path: /search/
-      port: 8080
-    initialDelaySeconds: 120
-    periodSeconds: 30
-    failureThreshold: 3
-  readinessProbe:
-    httpGet:
-      path: /search/
-      port: 8080
-    initialDelaySeconds: 90
-    periodSeconds: 10
-    failureThreshold: 3
-  resources:
-    requests:
-      cpu: "250m"
-      memory: 6Gi
-    limits:
-      cpu: "1000m"
-      memory: 11Gi
-
-  tomcatLogs:
+  processLogs:
     type: pvc
     existingClaim: ""
     storageClass: nfs-rwx
     size: 20Gi
-
-defaultWorkerImage:
-  repository: ceskaexpedice/curator-worker
-  tag: "7.2.0"
-  pullPolicy: Always
-
-workerTomcatLogs:
-  type: pvc
-  existingClaim: ""
-  storageClass: nfs-rwx
-  size: 20Gi
-
-workerProcessLogs:
-  type: pvc
-  existingClaim: ""
-  storageClass: nfs-rwx
-  size: 20Gi
 
 workerGroups:
   # Default catch-all curator worker — handles all process types.
   - name: curator
     replicas: 1
-    env:
-      CATALINA_OPTS: "-Xms512M -Xmx2G"
-    javaagentExtraCatalinaOpts: "-Dotel.service.name=worker-curator"
+    catalinaOptsMemory: "-Xms512M -Xmx2G"
     config:
       configurationPropertiesExtra: ""
       serverXml: ""
@@ -332,9 +386,7 @@ workerGroups:
       tag: "7.2.0"
       pullPolicy: Always
     profilesSubset: "import,new_indexer_index_object"
-    env:
-      CATALINA_OPTS: "-Xms1G -Xmx4G"
-    javaagentExtraCatalinaOpts: "-Dotel.service.name=worker-ingest"
+    catalinaOptsMemory: "-Xms1G -Xmx4G"
     config:
       configurationPropertiesExtra: ""
       serverXml: ""
@@ -359,179 +411,263 @@ workerGroups:
         cpu: 2000m
         memory: 6Gi
 
-gateway:
+hazelcast:
   image:
-    repository: openresty/openresty
-    tag: "1.27.1.2-3-alpine"
-    pullPolicy: IfNotPresent
-  resolver: kube-dns.kube-system.svc.cluster.local valid=30s ipv6=off
-  trustedProxyCidrs:
-    - 10.0.0.0/8
-    - 172.16.0.0/12
-    - 192.168.0.0/16
-  luaSharedDict:
-    rateMisc: 1m
-    rateLimit: 32m
-    downloadQuota: 64m
-  clientMaxBodySize: 512m
-  curatorPathPrefix: "/search/api/admin/"
-  error429: |
-    <html><body><h1>429 Too Many Requests</h1><p>You have exceeded the request rate limit. Please slow down.</p></body></html>
-  error429Download: |
-    <html><body><h1>429 Download Quota Exceeded</h1><p>You have reached the download limit for this period. Try again later.</p></body></html>
-  proxy:
-    connectTimeout: 10s
-    sendTimeout: 120s
-    readTimeout: 120s
-  # Peak hours: 09:00–18:00 local time; tighter limits apply during these hours.
-  peakHours:
-    enabled: true
-    from: 9
-    to: 18
-  # IPs/CIDRs exempt from rate limits and download quotas.
-  rateLimitWhitelist:
-    - "10.20.30.40"
-    - "192.168.1.0/24"
-  # Two rules: tighter limit for downloads (/search/api/item/*/streams/), global fallback.
-  rateLimits:
-    - pathPrefix: "/search/api/item/"
-      maxRequests: 200
-      windowSeconds: 60
-      peakMaxRequests: 100
-      offPeakMaxRequests: 200
-    - pathPrefix: "/"
-      maxRequests: 600
-      windowSeconds: 60
-      peakMaxRequests: 300
-      offPeakMaxRequests: 600
-  downloadLimits:
-    - pathPrefix: "/search/api/item/"
-      maxBytes: 2147483648        # 2 GB for media streams endpoint
-      windowSeconds: 3600
-      peakMaxBytes: 1073741824
-      offPeakMaxBytes: 2147483648
-    - pathPrefix: "/"
-      maxBytes: 5368709120        # 5 GB overall
-      windowSeconds: 3600
-      peakMaxBytes: 2147483648
-      offPeakMaxBytes: 5368709120
+    repository: ceskaexpedice/hazelcast-locks-server
+    tag: "2.0"
+    pullPolicy: Always
+    pullSecret: ""
+  instance: akubrasync
+  user: dev
+  env:
+    JAVA_OPTS: "-Xms512M -Xmx2G -Dhazelcast.diagnostics.enabled=true"
   resources:
     requests:
       cpu: 100m
-      memory: 128Mi
+      memory: 640Mi
     limits:
-      cpu: "1000m"
-      memory: 512Mi
+      cpu: 500m
+      memory: 3Gi
 
-adminClient:
+databases:
+  mode: cnpg
+  kramerius:
+    jdbc:
+      password: "another-very-strong-password"
+    cnpg:
+      cluster:
+        name: kramerius-db
+        instances: 3
+        maxConnections: ""
+      storage:
+        size: 100Gi
+        storageClass: fast-ssd
+  process:
+    jdbc:
+      password: "a-very-strong-password"
+    cnpg:
+      cluster:
+        name: process-db
+        instances: 3                  # HA: 3 instances (1 primary + 2 standbys)
+        maxConnections: ""
+      storage:
+        size: 50Gi
+        storageClass: fast-ssd
+  users:
+    jdbc:
+      password: "a-third-strong-password"
+    cnpg:
+      cluster:
+        name: users-db
+        instances: 3
+        maxConnections: ""
+      storage:
+        size: 50Gi
+        storageClass: fast-ssd
+
+# Akubra patterns (paths are fixed by chart mounts).
+akubraConfig:
   enabled: true
-  replicas: 1
-  image:
-    repository: registry.example.com/k7-admin
-    tag: "1.0.0"
-    pullPolicy: Always
-  config:
-    globalsJs: |
-      window.KRAMERIUS_API = "https://k7.example.com/search/api/client/v7.0";
-      window.KEYCLOAK_URL  = "https://keycloak.example.com/";
-      window.KEYCLOAK_REALM = "kramerius";
-      window.KEYCLOAK_CLIENT_ID = "krameriusAdmin";
-  resources:
-    requests:
-      cpu: "10m"
-      memory: "32Mi"
-    limits:
-      cpu: "50m"
-      memory: "64Mi"
+  objectStore:
+    pattern: "##/##/##"
+  datastreamStore:
+    pattern: "##/##/##"
+
+storages:
+  # Fallback NFS server for all volumes with type: nfs and no explicit nfsServer.
+  defaultNfsServer: nfs.example.com
+
+  javaagents:
+    type: nfs
+    nfsServer: nfs.example.com      # explicit override; falls back to defaultNfsServer if omitted
+    nfsPath: /data/javaagents
+
+  imports:
+    directory: /data/import
+    volumes:
+      - name: ingest
+        mountPath: /data/import/ingest
+        type: nfs
+        nfsServer: nfs.example.com
+        nfsPath: /data/kramerius/import
+
+  akubra-object-store:
+    type: pvc
+    existingClaim: ""               # set to reuse an existing PVC; chart skips PVC creation
+    storageClass: nfs-rwx
+    size: 2Ti
+
+  akubra-datastream-store:
+    type: pvc
+    existingClaim: ""
+    storageClass: nfs-rwx
+    size: 2Ti
+
+  imageserver:
+    type: nfs
+    nfsServer: nfs.example.com
+    nfsPath: /data/imageserver
+
+  audioserver:
+    type: nfs
+    nfsServer: nfs.example.com
+    nfsPath: /data/audioserver
+
+  pdfserver:
+    type: nfs
+    nfsServer: nfs.example.com
+    nfsPath: /data/pdfserver
 
 # ---------------------------------------------------------------------------
-# ELK stack
+# Observability stack — Vector + ClickHouse + HyperDX + optional OTEL collector.
+# Requires networking.hyperdx.host when observability is enabled.
 # ---------------------------------------------------------------------------
-elk:
+observability:
   enabled: true
 
-  elasticsearch:
+  vector:
     image:
-      repository: elasticsearch
-      tag: "9.1.2"
+      repository: timberio/vector
+      tag: "0.43.0-alpine"
       pullPolicy: IfNotPresent
-    env:
-      discoveryType: single-node
-      javaOpts: "-Xms1g -Xmx8g"
-      xpackSecurityEnabled: "false"
-    storage:
-      storageClass: ""
-      size: 128Gi
-    resources:
-      requests:
-        cpu: "250m"
-        memory: "2Gi"
-      limits:
-        cpu: "1"
-        memory: "8Gi"
-
-  kibana:
-    image:
-      repository: kibana
-      tag: "9.1.2"
-      pullPolicy: IfNotPresent
-    resources:
-      requests:
-        cpu: "250m"
-        memory: "512Mi"
-      limits:
-        cpu: "1"
-        memory: "2Gi"
-
-  filebeat:
-    image:
-      repository: elastic/filebeat
-      tag: "9.1.2"
-      pullPolicy: IfNotPresent
-    storage:
-      storageClass: ""
-      size: 1Gi
+      pullSecret: "registry-pull-secret"
+    # Custom Vector pipeline config. Defaults to kubernetes_logs → console (JSON).
+    pipeline: ""
+    geoip:
+      image:
+        repository: alpine
+        tag: "3"
+        pullPolicy: IfNotPresent
+      updater:
+        schedule: "0 4 5 * *"
     resources:
       requests:
         cpu: "100m"
         memory: "128Mi"
       limits:
+        cpu: "500m"
+        memory: "512Mi"
+    buffer:
+      storage:
+        storageClass: ""
+        size: "10Gi"
+
+  clickhouse:
+    image:
+      repository: clickhouse/clickhouse-server
+      tag: "25.4-alpine"
+      pullPolicy: IfNotPresent
+      pullSecret: "registry-pull-secret"
+    storage:
+      storageClass: fast-ssd
+      size: 256Gi
+    retentionDays: 90
+    resources:
+      requests:
+        cpu: "500m"
+        memory: "2Gi"
+      limits:
+        cpu: "4"
+        memory: "16Gi"
+
+  hyperdx:
+    image:
+      repository: hyperdx/hyperdx
+      tag: "latest"
+      pullPolicy: IfNotPresent
+      pullSecret: "registry-pull-secret"
+    # Required when observability.enabled=true. Generate: openssl rand -hex 32
+    apiKey: ""
+    clickhousePassword: ""
+    resources:
+      requests:
+        cpu: "100m"
+        memory: "256Mi"
+      limits:
         cpu: "1"
         memory: "1Gi"
 
-  gatewayLogs:
-    size: 256Mi
-
-  # Slack alerting: monitors Elasticsearch access logs for 429s and 5xx errors.
-  slackAlerts:
-    slackWebhookUrl: "https://hooks.slack.com/services/XXXXX/XXXXX/XXXXX"
-    schedule: "*/10 * * * *"
-    windowMinutes: 10
-    threshold429: 50
+  mongodb:
     image:
-      repository: dwdraju/alpine-curl-jq
-      tag: "latest"
+      repository: mongo
+      tag: "7"
       pullPolicy: IfNotPresent
+      pullSecret: "registry-pull-secret"
+    storage:
+      storageClass: ""
+      size: "1Gi"
+    resources:
+      requests:
+        cpu: "100m"
+        memory: "256Mi"
+      limits:
+        cpu: "500m"
+        memory: "1Gi"
 
-ingress:
-  enabled: true
-  className: nginx
-  annotations:
-    cert-manager.io/cluster-issuer: letsencrypt
-    nginx.ingress.kubernetes.io/real-ip-header: X-Forwarded-For
-  host: "k7.example.com"
-  tls:
-    secretName: kramerius-gateway-tls
-  admin:
-    host: "admin.k7.example.com"
-    oauthProtected: true            # protect admin UI with oauth2-proxy
-    tls:
-      secretName: kramerius-admin-tls
-  oauth:
-    authUrl: "https://auth.example.com/oauth2/auth"
-    authSignin: "https://auth.example.com/oauth2/start"
-  processManager:
-    host: "process-manager.k7.example.com"
-    oauthProtected: true            # protect process-manager UI with oauth2-proxy
-    tls:
-      secretName: kramerius-process-manager-tls
+  otel:
+    # JAR filename on the storages.javaagents PVC (mounted as a per-app javaagent when enabled per-component).
+    jarName: "opentelemetry-javaagent.jar"
+    protocol: grpc
+    collector:
+      enabled: true
+      replicas: 1
+      image:
+        repository: otel/opentelemetry-collector-contrib
+        tag: "0.104.0"
+        pullPolicy: IfNotPresent
+        pullSecret: "registry-pull-secret"
+      resources:
+        requests:
+          cpu: "100m"
+          memory: "256Mi"
+        limits:
+          cpu: "1"
+          memory: "1Gi"
+      decisionWait: 10s
+      numTraces: 50000
+      expectedNewTracesPerSec: 1000
+      latencyThresholdMs: 1000
+      probabilisticPercentage: 10
+      # Custom collector config (overrides the chart default tail-sampling config).
+      config: ""
+    krameriusPublic:
+      enabled: true
+      includeMethods: []
+    krameriusCurator:
+      enabled: true
+      includeMethods: []
+    processManager:
+      enabled: true
+      includeMethods: []
+    workersDefault:
+      enabled: true
+      includeMethods: []
+
+auth:
+  keycloak:
+    realm: kramerius
+    authServerUrl: https://keycloak.example.com/
+    sslRequired: external
+    resource: krameriusClient
+    secret: change-me
+    verifyTokenAudience: true
+    confidentialPort: 0
+    useResourceRoleMappings: true
+    policyEnforcer: {}
+
+# Solr endpoints used in configuration.properties.
+solrConfig:
+  search: "http://solr.example.com:8983/solr/search"
+  searchUseComposite: true
+  processing: ""
+  sdnnt: ""
+  logs: ""
+  monitor: ""
+  monitorThreshold: 1000
+  updates: ""
+  reharvest: ""
+  clientConfig:
+    maxConnections: 200
+    maxPerRoute: 100
+    connectTimeout: 120000
+    responseTimeout: 120000

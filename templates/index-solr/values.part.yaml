@@ -1,0 +1,79 @@
+# index-solr feature — values
+#
+# All keys under solrConfig map 1-to-1 to configuration.properties entries
+# that are injected into every Kramerius pod (public, curator, workers).
+# Leave a key empty ("") to omit that entry from configuration.properties.
+#
+# Key mapping:
+#   solrConfig.search             → solrSearchHost
+#   solrConfig.searchUseComposite → solrSearch.useCompositeId
+#   solrConfig.processing         → solrProcessingHost
+#   solrConfig.sdnnt              → solrSdnntHost
+#   solrConfig.logs               → k7.log.solr.point
+#   solrConfig.monitor            → api.monitor.point
+#   solrConfig.monitorThreshold   → api.monitor.threshold
+#   solrConfig.updates            → solrUpdatesHost (required in CDK mode)
+#   solrConfig.reharvest          → solrReharvestHost (required in CDK mode)
+
+solrConfig:
+  # Base URL of the Solr search collection.
+  # Required — Kramerius will not start without a valid search endpoint.
+  # Example: "http://solr.infra.svc.cluster.local:8983/solr/kramerius"
+  search: ""
+
+  # Set to true when the search collection uses composite (sharding) IDs,
+  # which is the default for Solr Cloud deployments.
+  # Set to false only for standalone single-node Solr instances.
+  searchUseComposite: true
+
+  # URL of the Solr processing collection used for batch indexing jobs.
+  # Example: "http://solr.infra.svc.cluster.local:8983/solr/kramerius-processing"
+  processing: ""
+
+  # URL of the SDNnT (Služba dostupnosti národních titulů) synchronisation
+  # Solr endpoint.
+  # Example: "http://solr.infra.svc.cluster.local:8983/solr/sdnnt"
+  sdnnt: ""
+
+  # Solr endpoint used for structured application log ingestion.
+  # Optional but strongly recommended in production.
+  # Example: "http://solr.infra.svc.cluster.local:8983/solr/k7-logs"
+  logs: ""
+
+  # Solr endpoint used for metrics / monitoring data.
+  # Optional but strongly recommended in production.
+  # Example: "http://solr.infra.svc.cluster.local:8983/solr/monitor"
+  monitor: ""
+
+  # Optional numeric threshold for monitor processing.
+  # Example: 1000
+  monitorThreshold: 1000
+
+  # CDK-only Solr endpoint for updates core.
+  # Required when cdk.enabled=true.
+  # Example: "http://solr.infra.svc.cluster.local:8983/solr/updates_v1"
+  updates: ""
+
+  # CDK-only Solr endpoint for reharvest core.
+  # Required when cdk.enabled=true.
+  # Example: "http://solr.infra.svc.cluster.local:8983/solr/reharvest_v1"
+  reharvest: ""
+
+
+  # Apache Solr client configuration.
+  # Example:
+  # clientConfig:
+  #   maxConnections: 200
+  #   maxPerRoute: 100
+  #   connectTimeout: 120000
+  #   responseTimeout: 120000
+  # Mapping to configuration.properties:
+  # solr.apache.client.max_connections={maxConnections}
+  # solr.apache.client.max_per_route={maxPerRoute}
+  # solr.apache.client.connect_timeout={connectTimeout}
+  # solr.apache.client.response_timeout={responseTimeout}
+  clientConfig:
+    maxConnections: 200
+    maxPerRoute: 100
+    connectTimeout: 120000
+    responseTimeout: 120000

@@ -1,0 +1,17 @@
+{{/* Process Manager — ClusterIP Service (port 80 → 8080) */}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: process-manager
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "kramerius.labels" . | nindent 4 }}
+    app.kubernetes.io/name: process-manager
+    app.kubernetes.io/component: process-manager
+spec:
+  selector:
+    {{- include "kramerius.processManager.matchLabels" . | nindent 4 }}
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8080

@@ -1,0 +1,105 @@
+{{/* Process Manager — StatefulSet (single-replica task scheduler) */}}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: process-manager
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "kramerius.labels" . | nindent 4 }}
+    app.kubernetes.io/name: process-manager
+    app.kubernetes.io/component: process-manager
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "kramerius.processManager.matchLabels" . | nindent 6 }}
+  serviceName: process-manager
+  podManagementPolicy: OrderedReady
+  updateStrategy:
+    type: RollingUpdate
+  revisionHistoryLimit: 2
+  template:
+    metadata:
+      labels:
+        {{- include "kramerius.processManager.matchLabels" . | nindent 8 }}
+      annotations:
+        checksum/kramerius-values: {{ include "kramerius.checksum.processManagerPod" . | quote }}
+    spec:
+      serviceAccountName: process-manager
+      {{- if .Values.processManager.image.pullSecret }}
+      imagePullSecrets:
+        - name: {{ .Values.processManager.image.pullSecret | quote }}
+      {{- end }}
+      securityContext:
+        runAsUser: 0
+        runAsGroup: 0
+      containers:
+        - name: process-manager
+          image: {{ .Values.processManager.image.repository }}:{{ .Values.processManager.image.tag }}
+          imagePullPolicy: {{ .Values.processManager.image.pullPolicy | default "Always" }}
+          ports:
+            - containerPort: 8080
+              name: http
+          envFrom:
+            - configMapRef:
+                name: timezone-config
+          env:
+{{- include "kramerius.tomcatLogsPodNameEnv" . | nindent 12 }}
+            {{- $pmEnv := mergeOverwrite (deepCopy (.Values.processManager.env | default dict)) (.Values.processManager.shadowEnv | default dict) }}
+            {{- range $k, $v := $pmEnv }}
+            {{- if and (ne $k "JDBC_URL") (ne $k "JDBC_USERNAME") (ne $k "JDBC_PASSWORD") (ne $k "JAVA_OPTS") }}
+            - name: {{ $k }}
+              value: {{ $v | quote }}
+            {{- end }}
+            {{- end }}
+            - name: JAVA_OPTS
+              value: {{ include "kramerius.mergeCatalinaOpts" (dict "root" . "memory" .Values.processManager.catalinaOptsMemory "javaagents" (.Values.processManager.javaagents | default list) "extra" .Values.processManager.catalinaOptsExtra "otelComp" ((.Values.observability | default dict).otel | default dict).processManager "otelServiceName" "process-manager" "globalShadow" ((.Values.shadow | default dict).catalinaOpts | default "")) | quote }}
+            - name: JDBC_URL
+              value: {{ include "kramerius.database.jdbcUrl" (dict "root" . "role" "process") | quote }}
+            - name: JDBC_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "kramerius.database.secretName" (dict "root" . "role" "process") }}
+                  key: username
+            - name: JDBC_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "kramerius.database.secretName" (dict "root" . "role" "process") }}
+                  key: password
+          volumeMounts:
+{{- include "kramerius.perAppJavaagentVolumeMounts" (dict "root" . "javaagents" (.Values.processManager.javaagents | default list) "otelComp" ((.Values.observability | default dict).otel | default dict).processManager) | nindent 12 }}
+            - mountPath: /usr/local/tomcat/conf/logging.properties
+              name: process-manager-logging
+              subPath: logging.properties
+              readOnly: true
+            {{- if .Values.processManager.config.serverXml }}
+            - mountPath: /usr/local/tomcat/conf/server.xml
+              name: process-manager-config
+              subPath: server.xml
+              readOnly: true
+            {{- end }}
+            - mountPath: /usr/local/tomcat/logs
+              name: process-manager-tomcat-logs
+              readOnly: false
+          {{- with .Values.processManager.livenessProbe }}
+          livenessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.processManager.readinessProbe }}
+          readinessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          resources:
+            {{- toYaml .Values.processManager.resources | nindent 12 }}
+      volumes:
+        - name: process-manager-logging
+          configMap:
+            name: process-manager-logging
+        {{- if .Values.processManager.config.serverXml }}
+        - name: process-manager-config
+          configMap:
+            name: process-manager-config
+        {{- end }}
+{{ include "kramerius.perAppJavaagentVolumes" (dict "root" . "javaagents" (.Values.processManager.javaagents | default list) "otelComp" ((.Values.observability | default dict).otel | default dict).processManager) | nindent 8 }}
+{{- include "kramerius.tomcatLogsNfsVolume" (dict "root" . "volumeName" "process-manager-tomcat-logs" "tomcatLogs" .Values.processManager.tomcatLogs) | nindent 8 }}
+{{- include "kramerius.tomcatLogsVolumeClaimTemplates" (dict "root" . "volumeName" "process-manager-tomcat-logs" "tomcatLogs" .Values.processManager.tomcatLogs) | nindent 2 }}

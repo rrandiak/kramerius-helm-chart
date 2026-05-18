@@ -1,81 +1,50 @@
-# Kramerius 7 — Helm Deployment
+# Kramerius 7 Helm Chart
 
-*Deployment is functional, but still a work in progress. There may be mistakes in the documentation.*
-
-This chart deploys **Kramerius 7**, a digital library platform used for managing and serving digitized documents. The chart targets a Kubernetes cluster with the CloudNative-PG operator installed.
+Helm chart for deploying Kramerius 7 on Kubernetes.
 
 ## Components
 
-| Component | Kind | Purpose |
-|---|---|---|
-| [Gateway (OpenResty)](docs/gateway.md) | Deployment | Edge proxy — rate limiting, download quotas, routing |
-| [Kramerius Public](docs/kramerius-public.md) | StatefulSet | Read-only API and search, horizontally scalable |
-| [Kramerius Curator](docs/kramerius-curator.md) | StatefulSet | Read-write API for administrators, single instance |
-| [Process Manager](docs/process-manager.md) | StatefulSet | Task scheduler — distributes work to workers |
-| [Workers](docs/workers.md) | StatefulSet (per group) | Asynchronous task execution (import, indexing, etc.) |
-| [Hazelcast](docs/hazelcast.md) | StatefulSet | Distributed lock server used by Kramerius and workers |
-| [CNPG (PostgreSQL)](docs/cnpg.md) | CNPG Cluster | Two managed PostgreSQL databases |
-| [Data Stores](docs/data-stores.md) | PVC / NFS | Shared FOXML object storage (Akubra), import stores and media stores |
-| [Admin Client](docs/admin-client.md) | Deployment | Static web UI for administration |
+| Area | Documentation |
+|---|---|
+| Edge Gateway (+ Redis) | [`templates/gateway/README.md`](templates/gateway/README.md) |
+| Networking (Ingress / Gateway API) | [`templates/networking/README.md`](templates/networking/README.md) |
+| Admin Client | [`templates/admin-client/README.md`](templates/admin-client/README.md) |
+| Kramerius Public | [`templates/kramerius-public/README.md`](templates/kramerius-public/README.md) |
+| Kramerius Curator | [`templates/kramerius-curator/README.md`](templates/kramerius-curator/README.md) |
+| Process Manager | [`templates/process-manager/README.md`](templates/process-manager/README.md) |
+| Workers | [`templates/workers/README.md`](templates/workers/README.md) |
+| Lock Server (Hazelcast) | [`templates/lock-server/README.md`](templates/lock-server/README.md) |
+| Database | [`templates/database/README.md`](templates/database/README.md) |
+| Storage: Akubra | [`templates/storage-akubra/README.md`](templates/storage-akubra/README.md) |
+| Storage: Import | [`templates/storage-import/README.md`](templates/storage-import/README.md) |
+| Storage: Media | [`templates/storage-media/README.md`](templates/storage-media/README.md) |
+| CDK Configuration | [`templates/cdk/README.md`](templates/cdk/README.md) |
+| Keycloak Integration | [`templates/keycloak/README.md`](templates/keycloak/README.md) |
+| Solr / Index | [`templates/index-solr/README.md`](templates/index-solr/README.md) |
+| Observability | [`templates/observability/README.md`](templates/observability/README.md) |
 
-## Architecture Overview
+## Architecture
 
-```mermaid
-flowchart TD
-    Internet([Internet])
-    Ingress["nginx-ingress\nTLS termination"]
-    Gateway["OpenResty Gateway\nLua rate limiting · Download quotas\nCurator routing"]
-    AdminClient["Admin Client\nStatic SPA · :80"]
-    Curator["Kramerius Curator\nRW · single pod"]
-    Public["Kramerius Public\nRO · N replicas"]
-    ProcessMgr["Process Manager"]
-    Workers["Worker Groups\ncurator-worker + custom groups"]
-    Hazelcast[("Hazelcast\n:5701\ndistributed locks")]
-    KrameDB[("kramerius-db\nCNPG cluster")]
-    ProcessDB[("process-db\nCNPG cluster")]
-    Akubra[("Akubra\nobjectStore · datastreamStore")]
-    Import[("imports\n(one or more)")]
-    Media[("imageserver\naudioserver · pdfserver")]
-
-    Internet --> Ingress
-    Ingress --> Gateway
-    Ingress --> AdminClient
-    AdminClient --> Gateway
-    Gateway -- "/search/api/admin/*" --> Curator
-    Gateway -- "/*" --> Public
-    Curator -- "submits tasks" --> ProcessMgr
-    Public -- "submits tasks" --> ProcessMgr
-    ProcessMgr -- "dispatches" --> Workers
-
-    Curator & Public & Workers --> Hazelcast
-    Curator & Public --> KrameDB
-    ProcessMgr --> ProcessDB
-
-    Public -- "RO" --> Akubra
-    Curator -- "RW" --> Akubra
-    Curator -- "RO" --> Import
-    Workers -- "RW" --> Akubra
-    Workers -- "RW" --> Import
-    Workers -- "RW" --> Media
-```
-
-*Support for multiple import directories depends on future Kramerius backend work. For a single import directory, everything is functional.*
+- Runtime/component architecture: [`PLATFORM_ARCHITECTURE.md`](PLATFORM_ARCHITECTURE.md)
+- Chart/template architecture: [`HELM_ARCHITECTURE.md`](HELM_ARCHITECTURE.md)
 
 ## Request Flow
 
-1. **Client & Admin Client → nginx-ingress** — TLS termination, SNI-based routing to correct service.
-2. **nginx-ingress → OpenResty Gateway** — All Kramerius traffic passes through the gateway. Lua scripts enforce per-IP rate limits and download quotas. The gateway inspects the request path and routes:
-   - `/search/api/admin/*` → **kramerius-curator**
-   - everything else → **kramerius-public**
-3. **Kramerius Public/Curator & Workers → Hazelcast** — Acquire distributed locks via Hazelcast before writing or indexing to avoid race conditions.
-4. **Kramerius Curator → Import storages** — Curator reads the list of import packages from shared filesystem(s) for presenting them to administrators.
-5. **Kramerius Curator / Public → Process Manager** — Long-running operations (re-indexing, imports, licenses change) are submitted as tasks to the Process Manager REST API. Both the curator and the public instance can submit tasks.
-6. **Process Manager → Workers** — The manager dispatches task execution to registered worker pods. Workers register themselves with a stable in-cluster DNS name (`POD_NAME.worker-NAME.NAMESPACE.svc.cluster.local`).
-7. **Workers → Akubra storage** — Workers read and write FOXML objects and datastreams directly on the shared filesystem.
-8. **Workers → Import storages** — Workers read imports from shared filesystem(s) and remove import packages after successful imports.
-9. **Workers → Media storage** — Workers write media from import packages into the shared filesystem.
-10. **Kramerius Public/Curator & Process Manager → CNPG PostgreSQL** — Application state (RBAC, user data, task queues) is persisted in the two managed PostgreSQL clusters.
-11. **Kramerius Public/Curator → Keycloak** — OIDC tokens issued by an external Keycloak instance are validated by the Kramerius Keycloak adapter on every authenticated request.
+1. **Client & Admin Client -> ingress/gateway** - TLS termination and host-based routing to the correct service.
+2. **Ingress/Gateway -> OpenResty Gateway** - All HTTP traffic passes through gateway rate-limit and quota policies.
+3. **Gateway routing split**:
+   - Curator path prefix (`/search/api/admin/*` by default) -> **kramerius-curator**
+   - All other paths -> **kramerius-public**
+4. **Public/Curator/Workers -> Hazelcast** - distributed locks protect write/index operations.
+5. **Curator -> Import storage** - curator reads available import packages.
+6. **Curator/Public -> Process Manager** - long-running actions are submitted as tasks.
+7. **Process Manager -> Workers** - manager dispatches tasks to worker pods.
+8. **Workers -> Akubra storage** - workers read/write object and datastream stores.
+9. **Workers -> Import storage** - workers consume import inputs.
+10. **Workers -> Media storage** - workers generate/write derivatives.
+11. **Public/Curator/Process Manager -> PostgreSQL + Keycloak** - app state is stored in DB and authentication is validated against Keycloak.
+
+Detailed runtime architecture: [`PLATFORM_ARCHITECTURE.md`](PLATFORM_ARCHITECTURE.md)
 
 ## Process / Task Flow
 
@@ -92,47 +61,48 @@ flowchart TD
     A --> B --> C --> D --> E --> F --> G
 ```
 
+More details: [`PLATFORM_ARCHITECTURE.md`](PLATFORM_ARCHITECTURE.md)
+
 ## Prerequisites
 
-- Kubernetes 1.26+
-- [CloudNative-PG operator](https://cloudnative-pg.io/) installed cluster-wide
-- nginx ingress controller
-- cert-manager (for TLS)
-- Shared storage provisioner (NFS or a RWX-capable StorageClass)
+- Kubernetes and operator/controller prerequisites: [`PLATFORM_ARCHITECTURE.md`](PLATFORM_ARCHITECTURE.md)
+- Feature-specific prerequisites: component docs under [`templates/`](templates/)
 
 ## Deployment
 
-### Option 1: Helm
+Base values and profile overlays:
+
+- [`values.yaml`](values.yaml)
+- [`values.standard.yaml`](values.standard.yaml)
+- [`values.cdk.yaml`](values.cdk.yaml)
+- [`values.minimal.yaml`](values.minimal.yaml)
+- [`values.maximal.yaml`](values.maximal.yaml)
+
+Example:
 
 ```bash
-helm repo add kramerius https://rrandiak.github.io/kramerius-helm-chart
-helm repo update
-
-helm upgrade --install kramerius kramerius/kramerius \
+helm upgrade --install kramerius . \
   --namespace kramerius --create-namespace \
-  -f values.yaml
-
-kubectl -n kramerius get pods
+  -f values.yaml \
+  -f values.standard.yaml
 ```
 
-### Option 2: Kustomize with Helm chart
-
-Create a `kustomization.yaml`:
+Kustomize with Helm chart:
 
 ```yaml
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 helmCharts:
-- name: kramerius
-  repo: https://rrandiak.github.io/kramerius-helm-chart
-  releaseName: kramerius
-  namespace: k7-kramerius
-  version: 1.0.0
-  valuesFile: values.yaml
+  - name: kramerius
+    repo: https://rrandiak.github.io/kramerius-helm-chart
+    releaseName: kramerius
+    namespace: kramerius
+    version: 1.0.0
+    valuesFile: values.yaml
 ```
 
-Then apply:
+Apply:
 
 ```bash
 kubectl apply -k .
@@ -140,22 +110,12 @@ kubectl apply -k .
 
 ## Values Reference
 
-Key values to configure before deploying:
+- Global defaults: [`values.yaml`](values.yaml)
+- Profile overlays: [`values.standard.yaml`](values.standard.yaml), [`values.cdk.yaml`](values.cdk.yaml), [`values.minimal.yaml`](values.minimal.yaml), [`values.maximal.yaml`](values.maximal.yaml)
+- Feature-level value contracts: files under [`templates/`](templates/) matching `values.part*.yaml`
+- Feature behavior/details: component docs under [`templates/`](templates/)
 
-| Value | Description |
-|---|---|
-| `namespace` | Kubernetes namespace |
-| `storages.defaultNfsServer` | Fallback NFS server for all volumes with `type: nfs` and no explicit `nfsServer` |
-| `defaultStorageClass` | Default StorageClass used for PVC-backed volumes when `storageClass` is empty |
-| `storages.*` | PVC / NFS configuration for data volumes (Akubra stores, media servers, javaagents) |
-| `storages.imports[]` | List of import storages — each with `name`, `mountPath`, and PVC/NFS settings. `import.directory` is auto-generated. |
-| `krameriusPublic.tomcatLogs` / `krameriusCurator.tomcatLogs` / `processManager.tomcatLogs` / `workerTomcatLogs` | Tomcat logs PVC/NFS per component (each StatefulSet creates its own claims) |
-| `cnpg.processManager.password` / `cnpg.kramerius.password` | DB bootstrap credentials (used as `jdbcUserPass` in `configuration.properties` and to create the bootstrap Secret) |
-| `akubraConfig` / `solrConfig` | Shared `configuration.properties` roots: Akubra patterns + Solr endpoints. The chart adds fixed Akubra mount paths, Keycloak (`auth.keycloak`), and the lock-server address. |
-| `krameriusPublic.config.configurationPropertiesExtra` / `krameriusCurator.config.configurationPropertiesExtra` / `processManager.config.configurationPropertiesExtra` / `workerGroups[].config.configurationPropertiesExtra` | Freeform `configuration.properties` tail appended after the chart-generated JDBC section. Put JDBC pool tuning keys here (for example `jdbcMaximumPoolSize`, `jdbcLeakDetectionThreshold`, `jdbcConnectionTimeout`). |
-| `auth.keycloak` | Keycloak adapter fields; rendered to `keycloak.json` and to Keycloak Java properties in `configuration.properties` |
-| `gateway.rateLimits` | Per-IP request rate limits |
-| `gateway.downloadLimits` | Per-IP download quota |
-| `ingress.host` / `ingress.admin.host` / `ingress.processManager.host` | Hostnames for each exposed service |
+## Development / Local
 
-See `values.yaml` for full annotated defaults.
+- [`dev/README.md`](dev/README.md)
+- [`files/gateway/README.md`](files/gateway/README.md)

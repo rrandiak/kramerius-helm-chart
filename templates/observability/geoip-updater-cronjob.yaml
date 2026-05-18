@@ -1,0 +1,44 @@
+{{- if eq (include "kramerius.observability.enabled" .) "true" }}
+{{- $v := ((.Values.observability | default dict).vector | default dict) }}
+{{- $geoip := ($v.geoip | default dict) }}
+{{- $updater := ($geoip.updater | default dict) }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: geoip-updater
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "kramerius.labels" . | nindent 4 }}
+    app.kubernetes.io/name: geoip-updater
+    app.kubernetes.io/component: observability
+spec:
+  schedule: {{ $updater.schedule | default "0 4 5 * *" | quote }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 2
+  failedJobsHistoryLimit: 2
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: download
+              image: {{ ($geoip.image | default dict).repository | default "alpine" }}:{{ ($geoip.image | default dict).tag | default "3" }}
+              imagePullPolicy: {{ ($geoip.image | default dict).pullPolicy | default "IfNotPresent" }}
+              command: ["/bin/sh", "/scripts/download-geoip.sh"]
+              volumeMounts:
+                - name: vector-data
+                  mountPath: /var/lib/vector
+                - name: geoip-scripts
+                  mountPath: /scripts
+                  readOnly: true
+          volumes:
+            - name: vector-data
+              persistentVolumeClaim:
+                claimName: vector-data
+            - name: geoip-scripts
+              configMap:
+                name: geoip-scripts
+                defaultMode: 0755
+{{- end }}

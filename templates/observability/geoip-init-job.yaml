@@ -1,0 +1,40 @@
+{{- if eq (include "kramerius.observability.enabled" .) "true" }}
+{{- $v := ((.Values.observability | default dict).vector | default dict) }}
+{{- $geoip := ($v.geoip | default dict) }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: geoip-init
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "kramerius.labels" . | nindent 4 }}
+    app.kubernetes.io/name: geoip-init
+    app.kubernetes.io/component: observability
+# Plain Job — no Helm hooks. Kubernetes runs it once on creation and it stays
+# as Completed. ArgoCD treats completed Jobs as Healthy and does not re-run
+# them on subsequent syncs. To force a re-download, delete the Job manually.
+spec:
+  backoffLimit: 3
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: download
+          image: {{ ($geoip.image | default dict).repository | default "alpine" }}:{{ ($geoip.image | default dict).tag | default "3" }}
+          imagePullPolicy: {{ ($geoip.image | default dict).pullPolicy | default "IfNotPresent" }}
+          command: ["/bin/sh", "/scripts/download-geoip.sh"]
+          volumeMounts:
+            - name: vector-data
+              mountPath: /var/lib/vector
+            - name: geoip-scripts
+              mountPath: /scripts
+              readOnly: true
+      volumes:
+        - name: vector-data
+          persistentVolumeClaim:
+            claimName: vector-data
+        - name: geoip-scripts
+          configMap:
+            name: geoip-scripts
+            defaultMode: 0755
+{{- end }}

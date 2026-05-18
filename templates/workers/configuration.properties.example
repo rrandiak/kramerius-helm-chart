@@ -1,0 +1,5 @@
+### PDF generation notifications
+api.client.point = <server>/search/api/client/v7.0
+administrator.email= <email administratora>
+generate.pdf.subject = <Email subjekt>
+generate.pdf.text = <Generovany text s promennou link, ktera odkazuje na stahovany dokument>

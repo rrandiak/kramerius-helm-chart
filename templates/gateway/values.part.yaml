@@ -1,0 +1,177 @@
+# Gateway — core workload and infrastructure values
+# Covers: image, resolver, proxy settings, Redis storage, user resolution, management API, error pages, resources.
+#
+# Access logs: OpenResty writes JSON access lines to stdout (`json_log` in nginx.conf). Ingestion into
+# ClickStack (e.g. Vector → ClickHouse → HyperDX) is handled outside this chart — there is no ELK/Filebeat sidecar.
+#
+# NOTE: all access control rules (endpoint groups, user definitions, limits, peak hours, bans) are NOT set here.
+# They are managed at runtime via the management client / API and stored in Redis.
+
+gateway:
+  # Single replica — rate/download counters live in per-process Lua shared dicts.
+  # Increasing replicas would cause counters to diverge across pods; keep at 1.
+  replicas: 1
+
+  image:
+    repository: openresty/openresty
+    tag: "1.27.1.2-3-alpine"
+    pullPolicy: IfNotPresent
+    pullSecret: ""
+
+  # In-cluster DNS resolver for dynamic upstream hostname resolution.
+  # Format: <address> valid=<ttl> [ipv6=off]
+  resolver: kube-dns.kube-system.svc.cluster.local valid=30s ipv6=off
+
+  # CIDRs of trusted reverse proxies (Ingress controllers, load balancers).
+  # Client IP is resolved from X-Forwarded-For by skipping these.
+  trustedProxyCidrs:
+    - 10.0.0.0/8
+    - 172.16.0.0/12
+    - 192.168.0.0/16
+
+  # Lua shared dict sizes — in-process memory for hot rate/download counters.
+  # Counters reset on pod restart; limit configuration and bans persist in Redis.
+  luaSharedDict:
+    rateMisc: 1m        # auxiliary flags and temporary scratch space
+    rateLimit: 32m      # per-client request-rate counters
+    downloadQuota: 64m  # per-client byte-download counters
+
+  # Maximum allowed request body size.
+  clientMaxBodySize: 512m
+
+  # Max requests served per keep-alive connection. Caps Lua context memory growth.
+  keepaliveRequests: 10000
+
+  # URI prefix routed to the curator (admin) backend; all other requests go to public.
+  curatorPathPrefix: "/search/api/admin/"
+
+  # Per-deployment informational text included in 429 responses (rate-limit and download-quota
+  # share one response template). Example: "Contact support@example.com to request higher limits."
+  # Leave empty to show the auto-generated section only.
+  error429Info: ""
+
+  # Include the current limit values in the 429 response body.
+  error429IncludeLimits: true
+
+  # Upstream proxy timeouts for kramerius-public and kramerius-curator backends.
+  proxy:
+    connectTimeout: 10s
+    sendTimeout: 120s
+    readTimeout: 120s
+
+  # Response caching (optional). See NOTES.md (Gateway Caching).
+  caching:
+    enabled: false
+    methods:
+      - GET
+      - HEAD
+    proxyCache:
+      inactive: 7d
+    memory:
+      dictSize: 64m
+      metaDictSize: 8m
+      maxEntryBytes: 2097152
+    disk:
+      emptyDirSizeLimit: 8Gi
+    # Example (disabled by default):
+    # rules:
+    #   - pathTemplates:
+    #       - "/search/api/{version}/search"
+    #     cacheType: lua_shared_dict
+    #     ttl: 60
+    #     minHits: 2
+    #   - pathTemplates:
+    #       - "/search/img/{path}"
+    #     cacheType: proxy_cache
+    #     ttl: 86400
+    #     minHits: 2
+    #     keysZone: 32m
+    #     maxSize: 2g
+    rules: []
+
+  # How often (in seconds) each worker re-polls Redis for config changes.
+  pollIntervalSeconds: 5
+
+  # Redis — config store for rate-limit rules, bans, and peak schedule.
+  # Always deployed alongside the gateway (required dependency, no enabled flag).
+  redis:
+    password: ""
+    # When set: REDIS_PASSWORD env var sourced from secretKeyRef (key: "password").
+    existingSecret: ""
+    image:
+      repository: redis
+      tag: "7-alpine"
+      pullPolicy: IfNotPresent
+      pullSecret: ""
+    storage:
+      storageClass: ""    # empty → defaultStorageClass
+      size: 1Gi
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        cpu: 200m
+        memory: 128Mi
+
+  # GCRA burst capacity as a fraction of each rule's window.
+  # 0.5 means clients may consume up to 50% of a window instantly before the
+  # sustained rate kicks in. Applied uniformly to all rules.
+  rateLimiting:
+    rlBurst: 0.5   # fraction of rl_window
+    dlBurst: 0.5   # fraction of dl_window
+
+  # Bearer token → username resolution via Kramerius.
+  # Required when any rule's user entry uses the username attribute.
+  # URL is fixed: http://kramerius-public/search/api/client/v7.0/user
+  # The `uid` field from the JSON response is used as the resolved username.
+  userResolution:
+    enabled: false
+    # Seconds to cache resolved username per token in memory (0 = no caching; cache resets on pod restart).
+    cacheTtlSeconds: 300
+
+  # Management API — single API for all runtime configuration:
+  # rate limits, download limits, peak hours, and ban management.
+  managementApi:
+    # Shared secret required for all management API calls.
+    secret: ""
+    # When set: MANAGEMENT_API_SECRET env var sourced from secretKeyRef (key: "secret").
+    existingSecret: ""
+
+  # Management client — Python web app and CLI for managing rules, limits, peak hours, bans.
+  # Deployed as a single-replica pod. The app.py and requirements.txt are stored in a ConfigMap
+  # and mounted at startup; dependencies are installed via pip. The managementApi.secret is
+  # injected as an environment variable.
+  managementClient:
+    enabled: true
+    port: 8080
+    slack:
+      # For POST /slack/commands signature verification (Slack app → Slash Commands → Request URL).
+      signingSecret: ""
+      # When set: SLACK_SIGNING_SECRET env var sourced from secretKeyRef (key: "signingSecret").
+      existingSecret: ""
+      # Optional allow-lists. When non-empty, requests from unlisted teams are rejected with 403;
+      # requests from unlisted users receive an ephemeral "Unauthorized" response.
+      # Team IDs look like T012345, user IDs like U012345.
+      allowedTeams: []
+      allowedUsers: []
+    image:
+      repository: python
+      tag: "3.12-slim"
+      pullPolicy: IfNotPresent
+      pullSecret: ""
+    resources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+      limits:
+        cpu: 200m
+        memory: 256Mi
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: "1000m"
+      memory: 512Mi

@@ -1,0 +1,59 @@
+# values.part.yaml — commons-keycloak
+#
+# This file documents the values keys owned by the commons-keycloak feature.
+# These values are cross-cutting: a single auth.keycloak block drives Keycloak
+# configuration for ALL workloads in the chart.
+#
+# Outputs generated from this block:
+#   1. keycloak.json ConfigMap  — mounted by kramerius-public and kramerius-curator
+#      at /root/.kramerius4/keycloak.json
+#   2. Keycloak section in configuration.properties — rendered into each workload's
+#      own ConfigMap (kramerius-public, kramerius-curator, worker groups).
+#      Keys: keycloak.tokenurl, keycloak.clientId, keycloak.secret
+#      Note: process-manager does not use Keycloak.
+#
+# Paste the relevant section into your site-specific values.yaml (or a values override file).
+
+auth:
+  keycloak:
+    # Keycloak realm name. Must match exactly the realm configured in the Keycloak admin console.
+    realm: ""
+
+    # Base URL of the Keycloak auth server (no trailing slash).
+    # Example: https://auth.example.com/auth
+    authServerUrl: ""
+
+    # SSL requirement for the adapter:
+    #   none     — no SSL required (development only)
+    #   external — SSL required for external requests (default, recommended for production)
+    #   all      — SSL required for all requests including internal cluster traffic
+    sslRequired: external
+
+    # Keycloak client ID (the "resource" in Keycloak adapter terminology).
+    resource: ""
+
+    # Keycloak client secret for confidential clients.
+    # WARNING: This is rendered in plaintext into a ConfigMap.
+    # For production, consider injecting via External Secrets Operator or a Sealed Secret
+    # and referencing the generated Secret rather than this value.
+    secret: ""
+
+    # When true, token audience verification is enforced. Recommended for production.
+    verifyTokenAudience: false
+
+    # Confidential port. Set to 0 when using standard HTTPS (443).
+    confidentialPort: 0
+
+    # When true, role checks use resource-level (client) roles instead of realm roles.
+    # Set to true when the Kramerius Keycloak client defines its own role hierarchy.
+    useResourceRoleMappings: false
+
+    # Optional Keycloak policy enforcer configuration.
+    # When non-empty, serialised as JSON and merged into keycloak.json under policy-enforcer.
+    # Example:
+    #   policyEnforcer:
+    #     enforcement-mode: ENFORCING
+    #     paths:
+    #       - path: "/api/admin/*"
+    #         enforcement-mode: ENFORCING
+    policyEnforcer: {}

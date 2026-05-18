@@ -1,0 +1,52 @@
+__TITLE__
+
+Too many requests from your client for this endpoint.
+
+__ERROR429_INFO__
+
+__LIMITS_BLOCK__
+
+Please retry after the period indicated by the Retry-After response header.
+
+──────────────────────────────────────────────────────────────────────
+Responsible usage algorithm
+──────────────────────────────────────────────────────────────────────
+
+  1. Send your request.
+  2. Check the HTTP status code:
+       200–299 → success, continue.
+       429     → read the Retry-After header, wait that many seconds,
+                 then retry the same request once.
+  3. For bulk operations: add a small delay (0.5–1s) between requests
+     to stay within the sustained rate shown in the limits table above.
+  4. Never retry in a tight loop — each retry resets your burst budget.
+
+──────────────────────────────────────────────────────────────────────
+Bash  (httpie — https://httpie.io)
+──────────────────────────────────────────────────────────────────────
+
+  http GET "https://your-instance/search/api/client/v7.0/search" q=="manuscript"
+
+  # On 429 the Retry-After header appears in the output. To extract and wait:
+  WAIT=$(http --headers GET "https://your-instance/search/api/client/v7.0/search" \
+              q=="manuscript" | awk '/Retry-After:/{print $2}')
+  echo "Rate limited — retry after ${WAIT}s"
+  sleep "$WAIT"
+
+──────────────────────────────────────────────────────────────────────
+Python
+──────────────────────────────────────────────────────────────────────
+
+  import time, requests
+
+  resp = requests.get(
+      "https://your-instance/search/api/client/v7.0/search",
+      params={"q": "manuscript"},
+  )
+  if resp.status_code == 429:
+      wait = int(resp.headers.get("Retry-After", 60))
+      print(f"Rate limited — retry after {wait}s")
+      time.sleep(wait)
+      resp = requests.get(...)   # single retry
+  resp.raise_for_status()
+  data = resp.json()

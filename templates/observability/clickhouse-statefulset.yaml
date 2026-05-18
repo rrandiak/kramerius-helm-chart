@@ -1,0 +1,61 @@
+{{- if eq (include "kramerius.observability.enabled" .) "true" }}
+{{- $c := ((.Values.observability | default dict).clickhouse | default dict) }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "kramerius.observability.clickhouseName" . }}
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "kramerius.labels" . | nindent 4 }}
+    app.kubernetes.io/name: {{ include "kramerius.observability.clickhouseName" . }}
+    app.kubernetes.io/component: observability
+spec:
+  serviceName: {{ include "kramerius.observability.clickhouseName" . }}
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "kramerius.observability.clickhouseName" . }}
+      app.kubernetes.io/component: observability
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "kramerius.observability.clickhouseName" . }}
+        app.kubernetes.io/component: observability
+      annotations:
+        checksum/clickhouse-config: {{ include "kramerius.checksum.clickhousePod" . | quote }}
+    spec:
+      {{- if (($c.image | default dict).pullSecret) }}
+      imagePullSecrets:
+        - name: {{ (($c.image | default dict).pullSecret) | quote }}
+      {{- end }}
+      containers:
+        - name: clickhouse
+          image: {{ (default "clickhouse/clickhouse-server" ($c.image | default dict).repository) }}:{{ (default "25.4-alpine" ($c.image | default dict).tag) }}
+          imagePullPolicy: {{ default "IfNotPresent" (($c.image | default dict).pullPolicy) }}
+          env:
+            - name: CLICKHOUSE_USER
+              value: {{ $c.user | default "" | quote }}
+            - name: CLICKHOUSE_PASSWORD
+              value: {{ $c.password | default "" | quote }}
+          ports:
+            - containerPort: 8123
+              name: http
+            - containerPort: 9000
+              name: native
+          volumeMounts:
+            - name: clickhouse-data
+              mountPath: /var/lib/clickhouse
+            - name: clickhouse-net-config
+              mountPath: /etc/clickhouse-server/config.d/listen.xml
+              subPath: listen.xml
+              readOnly: true
+          resources:
+            {{- toYaml ($c.resources | default dict) | nindent 12 }}
+      volumes:
+        - name: clickhouse-data
+          persistentVolumeClaim:
+            claimName: clickhouse-data
+        - name: clickhouse-net-config
+          configMap:
+            name: clickhouse-net-config
+{{- end }}

@@ -2,7 +2,8 @@ apiVersion: v2
 name: kramerius
 description: Kramerius 7 - digital library system
 type: application
-version: 1.0.9
+icon: https://system-kramerius.cz/wp-content/uploads/2025/11/cropped-favicon-32x32.webp
+version: 1.1.0-rc1
 appVersion: "7.2.0"
 maintainers:
   - name: Randiak Robert

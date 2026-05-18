@@ -1,0 +1,4 @@
+### Lock Server
+hazelcast.server.addresses=hazelcast.<namespace>.svc.cluster.local:5701
+hazelcast.instance=akubrasync
+hazelcast.user=dev

@@ -1,0 +1,31 @@
+adminClient:
+  enabled: true
+  replicas: 1
+  image:
+    repository: registry.example.com/k7-admin
+    tag: latest
+    pullPolicy: Always
+    pullSecret: <secret>
+  resources:
+    requests:
+      cpu: "10m"
+      memory: "32Mi"
+    limits:
+      cpu: "50m"
+      memory: "64Mi"
+  config:
+    userClientBaseUrl: "digitalniknihovna.cz/mzk"
+    keycloakLoginType: "all"
+    devMode: false
+    homeDashboard:
+      - type: processes
+      - type: indexing
+        subtype: object
+      - type: repository
+        subtype: "repository-management"
+      - type: "import"
+        subtype: "foxml"
+      - type: "collections"
+      - type: "monitoring"
+        subtype: "api"
+        hidden: true

@@ -1,0 +1,6 @@
+## Akubra
+objectStore.pattern=##/##/##
+objectStore.path=/data/akubra/objectStore
+datastreamStore.pattern=##/##/##
+datastreamStore.path=/data/akubra/datastreamStore
+

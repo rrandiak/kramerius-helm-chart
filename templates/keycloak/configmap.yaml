@@ -1,0 +1,11 @@
+{{/* Keycloak adapter ConfigMap — mounted as keycloak.json by public and curator pods */}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kramerius-keycloak
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "kramerius.labels" . | nindent 4 }}
+data:
+  keycloak.json: |
+    {{- include "kramerius.keycloakAdapterJson" . | nindent 4 }}

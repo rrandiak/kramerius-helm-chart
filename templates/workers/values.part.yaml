@@ -1,0 +1,183 @@
+# values.part.yaml — workers
+#
+# This file documents the values keys owned by the workers feature.
+# Paste the relevant section into your site-specific values.yaml (or a values override file).
+#
+# Dependencies on shared values:
+#   javaagent.*          — see commons-tomcat/values.part.yaml
+#   observability.otel.* — worker OTel enablement/defaults and optional collector
+#   storages.javaagents  — PVC that supplies javaagent JARs (read-only mount)
+#   storages.akubra.*    — Akubra object/datastream store PVCs
+#   storages.import.*    — Import source PVC(s)
+#   storages.media.*     — Image/audio/PDF derivative PVCs
+
+# Shared defaults for all worker groups.
+workersDefaults:
+  # Default image used by all worker groups that do not specify their own image block.
+  image:
+    repository: ceskaexpedice/curator-worker
+    tag: "7.2.0"
+    pullPolicy: Always
+    # Optional imagePullSecret for default worker image. Merged with per-group
+    # image.pullSecret on the pod when both are set (duplicate names omitted).
+    pullSecret: ""
+
+  # Optional -javaagent JARs (see storages.javaagents PVC) prepended to every
+  # worker group's javaagents list.
+  javaagents: []
+
+  # Shared worker logging.properties. If empty, defaultLoggingProperties is used.
+  loggingProperties: ""
+
+  # Default config overrides for all worker groups.
+  # Per-group config.* overrides these values.
+  config:
+    serverXml: ""
+    lpXml: ""
+
+  # Default process token credentials for workers (written to configuration.properties).
+  # Can be overridden per worker group via workerGroups[].token.*.
+  token:
+    clientId: ""
+    secret: ""
+
+  configuration:
+    apiClientPoint: ""
+    administratorEmail: ""
+    generatePdf:
+        subject: ""
+        text: ""
+  mail:
+    fromUser: ""
+    smtp:
+      user: ""
+      host: ""
+      startttlsEnable: ""
+      port: ""
+      auth: ""
+      socketFactoryPort: ""
+      socketFactoryClass: ""
+
+# OTEL per-group overrides are optional. When a group omits `otel`, the
+# defaults from observability.otel.workersDefault are used.
+# If observability.otel.collector.enabled=true, workers export traces to the
+# in-cluster collector (tail sampling capable) instead of directly to ClickHouse.
+
+# PVC for Tomcat logs (access log, catalina.out) shared by all worker StatefulSets.
+# Each StatefulSet creates its own volumeClaimTemplates entry from this spec, so PVC
+# names are scoped per group (worker-<name>-tomcat-logs-<ordinal>).
+  tomcatLogs:
+    type: pvc
+    storageClass: nfs
+    size: 5Gi
+    existingClaim: ""
+    nfsServer: ""
+    nfsPath: ""
+
+# PVC for process platform logs.
+# Mounted at /root/.processplatform in every worker pod across all groups.
+# Must support ReadWriteMany (e.g. NFS). Each pod writes to its own subdirectory.
+  processLogs:
+    type: pvc
+    storageClass: nfs
+    size: 5Gi
+    existingClaim: ""
+    nfsServer: ""
+    nfsPath: ""
+
+# Worker group definitions.
+# Each entry produces: StatefulSet, headless Service, ServiceAccount, ConfigMap.
+# Add or remove groups to match your operational requirements.
+workerGroups:
+  # --- Primary curator group (handles all process types) ---
+  - name: curator
+    replicas: 1
+
+    # Image override for this group. Remove to use workersDefaults.image.
+    # image:
+    #   repository: ceskaexpedice/curator-worker
+    #   tag: "7.2.0"
+    #   pullPolicy: Always
+    #   pullSecret: ""
+
+    # Restrict this group to specific process types (comma-separated profile names).
+    # Leave unset or empty to accept all process types.
+    # profilesSubset: "import,new_indexer_index_object"
+
+    # Optional per-group override of workersDefaults.token.*.
+    token:
+      clientId: ""
+      secret: ""
+
+    # Optional direct per-group nested overrides.
+    configuration:
+      apiClientPoint: ""
+      administratorEmail: ""
+      generatePdf:
+        subject: ""
+        text: ""
+    mail:
+      fromUser: ""
+      smtp:
+        user: ""
+        host: ""
+        startttlsEnable: ""
+        port: ""
+        auth: ""
+        socketFactoryPort: ""
+        socketFactoryClass: ""
+
+    # Polling intervals for the worker process loop.
+    workerLoopSleepSecs: 10
+    workerLoopPrintSecs: 30
+
+    # Base JVM memory flags. Keep -Xmx consistent with resources.limits.memory.
+    catalinaOptsMemory: "-Xms512M -Xmx2G"
+
+    config:
+      # Extra key=value lines appended verbatim to this group's configuration.properties.
+      configurationPropertiesExtra: ""
+      # Tomcat server.xml override. Leave empty to use workersDefaults.config.serverXml.
+      serverXml: ""
+      # Logs Platform XML descriptor override. Leave empty to use workersDefaults.config.lpXml.
+      lpXml: ""
+
+    livenessProbe: {}
+    readinessProbe: {}
+
+    resources:
+      requests:
+        cpu: 250m
+        memory: 640Mi
+      limits:
+        # Must accommodate CATALINA_OPTS -Xmx plus off-heap overhead.
+        cpu: 1500m
+        memory: 3Gi
+
+  # --- Example: dedicated ingest group (commented out) ---
+  # Uncomment and adjust to run a separate group specialised for import/ingest tasks.
+  # - name: ingest
+  #   replicas: 2
+  #   image:
+  #     repository: ceskaexpedice/curator-worker
+  #     tag: "7.2.0"
+  #     pullPolicy: Always
+  #   # Accept only import-related process types on this group.
+  #   profilesSubset: "import,new_indexer_index_object"
+  #   workerLoopSleepSecs: 5
+  #   workerLoopPrintSecs: 60
+  #   catalinaOptsMemory: "-Xms1G -Xmx4G"
+  #   catalinaOptsExtra: "-Dcustom.worker.flag=true"
+  #   config:
+  #     configurationPropertiesExtra: ""
+  #     serverXml: ""
+  #     lpXml: ""
+  #   livenessProbe: {}
+  #   readinessProbe: {}
+  #   resources:
+  #     requests:
+  #       cpu: 500m
+  #       memory: 1Gi
+  #     limits:
+  #       cpu: 2000m
+  #       memory: 5Gi

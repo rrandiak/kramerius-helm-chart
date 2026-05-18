@@ -1,0 +1,17 @@
+var APP_GLOBAL = {
+  coreBaseUrl: '{api host}/search',
+  userClientBaseUrl: '{from values.yaml}',
+  deployPath: '{admin host}',
+  keycloak: {
+    loginType: 'all'
+  },
+  homeDashboard: [
+    { type: 'processes' },
+    { type: 'indexing', subtype: 'object' },
+    { type: 'repository', subtype: 'repository-management' },
+    { type: 'import', subtype: 'foxml' },
+    { type: 'collections' },
+    { type: 'monitoring', subtype: 'api', hidden: true }
+  ],
+  devMode: false
+};

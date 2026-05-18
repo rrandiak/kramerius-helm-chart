@@ -10,6 +10,27 @@ namespace: kramerius
 
 defaultStorageClass: nfs
 
+# Edge / Networking (merges with values.yaml — only override hosts here if defaults suffice for TLS/annotations)
+networking:
+  api:
+    host: "k7.example.com"
+  admin:
+    host: "admin.k7.example.com"
+  processManager:
+    host: "process-manager.k7.example.com"
+
+databases:
+  kramerius:
+    jdbc:
+      password: change-me
+  process:
+    jdbc:
+      password: change-me
+  users:
+    jdbc:
+      password: change-me
+
+# Storage
 storages:
   # Single NFS server for all volumes — override nfsServer per entry if needed.
   defaultNfsServer: nfs.example.com
@@ -20,37 +41,39 @@ storages:
   akubra-datastream-store:
     nfsPath: /data/kramerius/akubra/datastreamStore
 
-  import:
-    nfsPath: /data/kramerius/import
+  imports:
+    directory: /data/import
+    volumes:
+      - name: ingest
+        mountPath: /data/import/ingest
+        type: nfs
+        nfsPath: /data/kramerius/import
 
   imageserver:
+    type: nfs
     nfsPath: /data/imageserver
 
   audioserver:
+    type: nfs
     nfsPath: /data/audioserver
 
   pdfserver:
+    type: nfs
     nfsPath: /data/pdfserver
 
   javaagents:
+    type: nfs
     nfsPath: /data/javaagents
 
+# Solr — required endpoints (empty values render empty configuration.properties lines)
+solrConfig:
+  search: "http://solr.example.com:8983/solr/search"
+  processing: "http://solr.example.com:8983/solr/processing"
+
+# External auth
 auth:
   keycloak:
     realm: kramerius
     authServerUrl: https://keycloak.example.com/
     resource: krameriusClient
     secret: change-me
-
-cnpg:
-  processManager:
-    password: change-me
-  kramerius:
-    password: change-me
-
-ingress:
-  host: "k7.example.com"
-  admin:
-    host: "admin.k7.example.com"
-  processManager:
-    host: "process-manager.k7.example.com"

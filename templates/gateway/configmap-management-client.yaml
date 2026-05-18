@@ -1,0 +1,23 @@
+{{- if .Values.gateway.managementClient.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gateway-management-client-app
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "kramerius.labels" . | nindent 4 }}
+    {{- include "kramerius.gateway.management.matchLabels" . | nindent 4 }}
+data:
+  management.py: |-
+{{ .Files.Get "files/gateway/management.py" | nindent 4 }}
+  dashboard.html: |-
+{{ .Files.Get "files/gateway/dashboard.html" | nindent 4 }}
+  dashboard.css: |-
+{{ .Files.Get "files/gateway/dashboard.css" | nindent 4 }}
+  endpoints.txt: |-
+{{ .Files.Get "files/gateway/endpoints.txt" | nindent 4 }}
+  bottle.py: |-
+{{ .Files.Get "files/gateway/bottle.py" | nindent 4 }}
+  water.css: |-
+{{ .Files.Get "files/gateway/water.css" | nindent 4 }}
+{{- end }}

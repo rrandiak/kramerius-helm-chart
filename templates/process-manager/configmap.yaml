@@ -1,0 +1,13 @@
+{{/* Process Manager — ConfigMap (optional server.xml override) */}}
+{{- if .Values.processManager.config.serverXml }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: process-manager-config
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "kramerius.labels" . | nindent 4 }}
+data:
+  server.xml: |
+    {{- .Values.processManager.config.serverXml | nindent 4 }}
+{{- end }}

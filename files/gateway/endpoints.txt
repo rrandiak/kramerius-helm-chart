@@ -1,0 +1,149 @@
+# Index
+/search/api/client/v7.0/search
+# IIIF
+/search/iiif/{pid}/info.json
+/search/iiif/{pid}/{region}/{size}/{rotation}/default.jpg
+# Item Info
+/search/api/client/v7.0/items/{pid}/info/data
+/search/api/client/v7.0/items/{pid}/info/structure
+/search/api/client/v7.0/items/{pid}/info/providedByLicenses
+/search/api/client/v7.0/items/{pid}/info/image
+/search/api/client/v7.0/items/{pid}/info
+# Image Serving
+/search/api/client/v7.0/items/{pid}/image/preview
+/search/api/client/v7.0/items/{pid}/image/thumb
+/search/api/client/v7.0/items/{pid}/image
+# Item Metadata
+/search/api/client/v7.0/items/{pid}/metadata/dc
+/search/api/client/v7.0/items/{pid}/metadata/mods
+/search/api/client/v7.0/items/{pid}/foxml
+# OCR / ALTO
+/search/api/client/v7.0/items/{pid}/ocr/text
+/search/api/client/v7.0/items/{pid}/ocr/alto
+# Audio
+/search/api/client/v7.0/items/{pid}/audio/{type}
+# Collection Cuttings
+/search/api/client/v7.0/items/{pid}/collection/cuttings
+# Item Existence
+/search/api/client/v7.0/items/{pid}
+# PDF
+/search/api/client/v7.0/pdf/selection
+/search/api/client/v7.0/pdf/parent
+/search/api/client/v7.0/pdf
+# Authentication & Authorization
+/search/api/client/v7.0/user/auth/login
+/search/api/client/v7.0/user/auth/logout
+/search/api/client/v7.0/user/auth/token
+/search/api/client/v7.0/user/actions
+/search/api/client/v7.0/user
+# User Folders
+/search/api/client/v7.0/folders/{pid}/items
+/search/api/client/v7.0/folders/{pid}
+/search/api/client/v7.0/folders
+# UI Config
+/search/api/client/v7.0/ui-config/general
+/search/api/client/v7.0/ui-config/licenses
+/search/api/client/v7.0/ui-config/curator-lists
+# User Requests
+/search/api/client/v7.0/items/{pid}/requests/{request-id}
+/search/api/client/v7.0/userrequests/requests/{request-id}
+/search/api/client/v7.0/userrequests/userspace/{token}
+# CDK Forward Datastreams
+/search/api/cdk/v7.0/forward/item/{pid}/streams/ALTO
+/search/api/cdk/v7.0/forward/item/{pid}/streams/BIBLIO_MODS
+/search/api/cdk/v7.0/forward/item/{pid}/streams/IMG_FULL
+/search/api/cdk/v7.0/forward/item/{pid}/streams/IMG_PREVIEW
+/search/api/cdk/v7.0/forward/item/{pid}/streams/TEXT_OCR
+# CDK Forward Images
+/search/api/cdk/v7.0/forward/zoomify/{pid}/ImageProperties.xml
+/search/api/cdk/v7.0/forward/zoomify/{pid}/TileGroup0/{tile}.jpg
+# CDK Forward Solr Sync
+/search/api/cdk/v7.0/forward/sync/solr/select
+# CDK Forward Info
+/search/api/cdk/v7.0/forward/providedBy/{pid}
+/search/api/cdk/v7.0/forward/user
+# Locks
+/search/api/client/v7.0/locks/{hash}/refresh
+/search/api/client/v7.0/locks/{hash}
+# Instance Info
+/search/api/client/v7.0/info
+# Collections
+/search/api/admin/v7.0/collections/{colpid}/delete_batch_clipitems
+/search/api/admin/v7.0/collections/{colpid}/delete_clip_item
+/search/api/admin/v7.0/collections/{colpid}/add_clip_item
+/search/api/admin/v7.0/collections/{colpid}/items/delete_batch_items
+/search/api/admin/v7.0/collections/{colpid}/items/{itempid}
+/search/api/admin/v7.0/collections/{pid}/image/thumb
+/search/api/admin/v7.0/collections/prefix
+/search/api/admin/v7.0/collections/{pid}/items
+/search/api/admin/v7.0/collections/{pid}
+/search/api/admin/v7.0/collections
+# Input / Output Directories
+/search/api/admin/v7.0/files/download-path/{path}
+/search/api/admin/v7.0/files/pidlist-dir/{path}
+/search/api/admin/v7.0/files/input-data-dir-for_convert-and-import-ndk/{path}
+/search/api/admin/v7.0/files/input-data-dir-for_import-foxml/{path}
+/search/api/admin/v7.0/files/output-data-dir-for_nkplogs/{path}
+/search/api/admin/v7.0/files/output-data-dir-for_collectionsbackup/{path}
+# Statistics
+/search/api/admin/v7.0/statistics/anual/csv
+/search/api/admin/v7.0/statistics/logs
+/search/api/admin/v7.0/statistics/search
+/search/api/admin/v7.0/statistics/facets/csv/{type}
+/search/api/admin/v7.0/statistics
+# Item Changes
+/search/api/admin/v7.0/items/{pid}/children_order
+/search/api/admin/v7.0/items/{pid}/foxml
+/search/api/admin/v7.0/items/{pid}
+/search/api/admin/v7.0/items/models
+/search/api/admin/v7.0/items
+# Licenses
+/search/api/admin/v7.0/licenses/movedown/{id}
+/search/api/admin/v7.0/licenses/moveup/{id}
+/search/api/admin/v7.0/licenses/changeOrdering
+/search/api/admin/v7.0/licenses/local/{id}
+/search/api/admin/v7.0/licenses/local
+/search/api/admin/v7.0/licenses/global
+/search/api/admin/v7.0/licenses
+# Roles
+/search/api/admin/v7.0/roles/{id}
+/search/api/admin/v7.0/roles
+# Rights
+/search/api/admin/v7.0/rights/licenses
+/search/api/admin/v7.0/rights/criteria
+/search/api/admin/v7.0/rights/params/{id}
+/search/api/admin/v7.0/rights/params
+/search/api/admin/v7.0/rights/resolve/{pid}
+/search/api/admin/v7.0/rights/{id}
+/search/api/admin/v7.0/rights
+# Processes
+/search/api/admin/v7.0/processes/by_process_uuid/{process_uuid}/logs/err/lines
+/search/api/admin/v7.0/processes/by_process_uuid/{process_uuid}/logs/out/lines
+/search/api/admin/v7.0/processes/batches/by_first_process_id/{process_id}/execution
+/search/api/admin/v7.0/processes/batches/by_first_process_id/{process_id}
+/search/api/admin/v7.0/processes/by_process_uuid/{process_uuid}/logs/err
+/search/api/admin/v7.0/processes/by_process_uuid/{process_uuid}/logs/out
+/search/api/admin/v7.0/processes/by_process_uuid/{process_uuid}
+/search/api/admin/v7.0/processes/by_process_id/{process_id}
+/search/api/admin/v7.0/processes/owners
+/search/api/admin/v7.0/processes/batches
+/search/api/admin/v7.0/processes/workers
+/search/api/admin/v7.0/processes
+# FOXML Repository Operations
+/search/api/admin/v7.0/repository/deleteDatastream
+/search/api/admin/v7.0/repository/createExternalDatastream
+/search/api/admin/v7.0/repository/createManagedDatastream
+/search/api/admin/v7.0/repository/createXMLDatastream
+/search/api/admin/v7.0/repository/delete
+/search/api/admin/v7.0/repository/ingest
+/search/api/admin/v7.0/repository/getLiterals
+/search/api/admin/v7.0/repository/getRelations
+/search/api/admin/v7.0/repository/getDatastreamNames
+/search/api/admin/v7.0/repository/getDatastreamMetadata
+/search/api/admin/v7.0/repository/getDatastreamContent
+/search/api/admin/v7.0/repository/getMetadata
+/search/api/admin/v7.0/repository/export
+# Workmode
+/search/api/admin/v7.0/workmode
+# Service Tokens
+/search/api/exts/v7.0/tokens/{clientid}

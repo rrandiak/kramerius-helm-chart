@@ -1,0 +1,149 @@
+{{/* Kramerius Public — StatefulSet (scalable read-only app instances) */}}
+{{- if lt (int .Values.krameriusPublic.replicas) 1 }}
+  {{- fail "krameriusPublic.replicas must be >= 1" }}
+{{- end }}
+{{- if and (.Values.krameriusPublic.catalinaOptsOverride | default "" | trim) (.Values.krameriusPublic.catalinaOptsExtra | default "" | trim) }}
+  {{- fail "krameriusPublic: catalinaOptsOverride and catalinaOptsExtra are mutually exclusive" }}
+{{- end }}
+{{- $pubReservedMounts := list "/root/.kramerius4" "/root/.kramerius4/configuration.properties" "/root/.kramerius4/keycloak.json" "/usr/local/tomcat/conf/logging.properties" "/usr/local/tomcat/logs" }}
+{{- range .Values.krameriusPublic.customConfigs | default list }}
+  {{- if has .mountPath $pubReservedMounts }}
+    {{- fail (printf "krameriusPublic.customConfigs: mountPath %q conflicts with a built-in volume mount" .mountPath) }}
+  {{- end }}
+{{- end }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: kramerius-public
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "kramerius.labels" . | nindent 4 }}
+    app.kubernetes.io/name: kramerius-public
+    app.kubernetes.io/component: kramerius-public
+spec:
+  replicas: {{ .Values.krameriusPublic.replicas }}
+  selector:
+    matchLabels:
+      {{- include "kramerius.public.matchLabels" . | nindent 6 }}
+  serviceName: kramerius-public
+  podManagementPolicy: OrderedReady
+  updateStrategy:
+    type: RollingUpdate
+  revisionHistoryLimit: 2
+  template:
+    metadata:
+      labels:
+        {{- include "kramerius.public.matchLabels" . | nindent 8 }}
+      annotations:
+        checksum/kramerius-values: {{ include "kramerius.checksum.krameriusPublicPod" . | quote }}
+    spec:
+      serviceAccountName: kramerius-public
+      {{- if .Values.krameriusPublic.image.pullSecret }}
+      imagePullSecrets:
+        - name: {{ .Values.krameriusPublic.image.pullSecret | quote }}
+      {{- end }}
+      affinity:
+        {{- include "kramerius.podAntiAffinity" (dict
+          "type"        (.Values.krameriusPublic.affinity.type | default "hard")
+          "matchLabels" (fromYaml (include "kramerius.public.matchLabels" .))
+        ) | nindent 8 }}
+      securityContext:
+        runAsUser: 0
+        runAsGroup: 0
+      containers:
+        - name: kramerius-public
+          image: {{ .Values.krameriusPublic.image.repository }}:{{ .Values.krameriusPublic.image.tag }}
+          imagePullPolicy: {{ .Values.krameriusPublic.image.pullPolicy | default "Always" }}
+          ports:
+            - containerPort: 8080
+              name: tomcat
+          envFrom:
+            - configMapRef:
+                name: timezone-config
+          env:
+{{- include "kramerius.tomcatLogsPodNameEnv" . | nindent 12 }}
+            {{- $pubEnv := mergeOverwrite (deepCopy (.Values.krameriusPublic.env | default dict)) (.Values.krameriusPublic.shadowEnv | default dict) }}
+            {{- range $k, $v := $pubEnv }}
+            {{- if ne $k "CATALINA_OPTS" }}
+            - name: {{ $k }}
+              value: {{ $v | quote }}
+            {{- end }}
+            {{- end }}
+            {{- if not (hasKey $pubEnv "HAZELCAST_SERVER_ADDRESSES") }}
+            - name: HAZELCAST_SERVER_ADDRESSES
+              value: {{ include "kramerius.hazelcastServerAddresses" . | quote }}
+            {{- end }}
+            {{- if not (hasKey $pubEnv "PROCESS_MANAGER_URL") }}
+            - name: PROCESS_MANAGER_URL
+              value: {{ include "kramerius.processManagerUrl" . | quote }}
+            {{- end }}
+            - name: CATALINA_OPTS
+              value: {{ if (.Values.krameriusPublic.catalinaOptsOverride | default "") | trim }}{{ .Values.krameriusPublic.catalinaOptsOverride | trim | quote }}{{ else }}{{ include "kramerius.mergeCatalinaOpts" (dict "root" . "memory" .Values.krameriusPublic.catalinaOptsMemory "javaagents" (.Values.krameriusPublic.javaagents | default list) "extra" .Values.krameriusPublic.catalinaOptsExtra "otelComp" ((.Values.observability | default dict).otel | default dict).krameriusPublic "otelServiceName" "kramerius-public" "globalShadow" ((.Values.shadow | default dict).catalinaOpts | default "")) | quote }}{{ end }}
+          volumeMounts:
+            - mountPath: /root/.kramerius4
+              name: kramerius-public-config-dir
+{{- include "kramerius.perAppJavaagentVolumeMounts" (dict "root" . "javaagents" (.Values.krameriusPublic.javaagents | default list) "otelComp" ((.Values.observability | default dict).otel | default dict).krameriusPublic) | nindent 12 }}
+            - mountPath: /root/.kramerius4/configuration.properties
+              name: kramerius-public-config
+              subPath: configuration.properties
+              readOnly: true
+            - mountPath: /usr/local/tomcat/conf/logging.properties
+              name: kramerius-public-logging
+              subPath: logging.properties
+              readOnly: true
+            {{- if (include "kramerius.public.serverXml" . | trim) }}
+            - mountPath: /usr/local/tomcat/conf/server.xml
+              name: kramerius-public-config
+              subPath: server.xml
+              readOnly: true
+            {{- end }}
+            {{- range $i, $c := .Values.krameriusPublic.customConfigs }}
+            - mountPath: {{ $c.mountPath }}
+              name: kramerius-public-config
+              subPath: custom-config-{{ $i }}
+              readOnly: true
+            {{- end }}
+            - mountPath: /root/.kramerius4/keycloak.json
+              name: kramerius-keycloak
+              subPath: keycloak.json
+              readOnly: true
+            - mountPath: /usr/local/tomcat/logs
+              name: kramerius-public-tomcat-logs
+              readOnly: false
+            {{- if eq (include "kramerius.akubra.enabled" .) "true" }}
+            - mountPath: /data/akubra/objectStore
+              name: akubra-objectstore
+              readOnly: true
+            - mountPath: /data/akubra/datastreamStore
+              name: akubra-datastream
+              readOnly: true
+            {{- end }}
+          {{- with .Values.krameriusPublic.livenessProbe }}
+          livenessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.krameriusPublic.readinessProbe }}
+          readinessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          resources:
+            {{- toYaml .Values.krameriusPublic.resources | nindent 12 }}
+      volumes:
+        - name: kramerius-public-config-dir
+          emptyDir: {}
+        - name: kramerius-public-config
+          configMap:
+            name: kramerius-public-config
+        - name: kramerius-public-logging
+          configMap:
+            name: kramerius-public-logging
+        - name: kramerius-keycloak
+          configMap:
+            name: kramerius-keycloak
+{{ include "kramerius.perAppJavaagentVolumes" (dict "root" . "javaagents" (.Values.krameriusPublic.javaagents | default list) "otelComp" ((.Values.observability | default dict).otel | default dict).krameriusPublic) | nindent 8 }}
+{{- if eq (include "kramerius.akubra.enabled" .) "true" }}
+{{- include "kramerius.sharedStorageVolume" (dict "root" . "volumeName" "akubra-objectstore" "storageKey" "akubra-object-store") | nindent 8 }}
+{{- include "kramerius.sharedStorageVolume" (dict "root" . "volumeName" "akubra-datastream" "storageKey" "akubra-datastream-store") | nindent 8 }}
+{{- end }}
+{{- include "kramerius.tomcatLogsNfsVolume" (dict "root" . "volumeName" "kramerius-public-tomcat-logs" "tomcatLogs" .Values.krameriusPublic.tomcatLogs) | nindent 8 }}
+{{- include "kramerius.tomcatLogsVolumeClaimTemplates" (dict "root" . "volumeName" "kramerius-public-tomcat-logs" "tomcatLogs" .Values.krameriusPublic.tomcatLogs) | nindent 2 }}

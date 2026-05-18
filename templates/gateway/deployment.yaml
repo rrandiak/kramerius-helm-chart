@@ -1,0 +1,113 @@
+{{- $observabilityEnabled := eq (include "kramerius.observability.enabled" .) "true" }}
+{{- $v := ((.Values.observability | default dict).vector | default dict) }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gateway-openresty
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "kramerius.labels" . | nindent 4 }}
+    {{- include "kramerius.gateway.matchLabels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.gateway.replicas | default 1 }}
+  selector:
+    matchLabels:
+      {{- include "kramerius.gateway.matchLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "kramerius.gateway.matchLabels" . | nindent 8 }}
+      annotations:
+        checksum/gateway-openresty: {{ include "kramerius.checksum.gatewayOpenrestyPod" . | quote }}
+    spec:
+      {{- if .Values.gateway.image.pullSecret }}
+      imagePullSecrets:
+        - name: {{ .Values.gateway.image.pullSecret | quote }}
+      {{- end }}
+      containers:
+        - name: openresty
+          image: {{ .Values.gateway.image.repository }}:{{ .Values.gateway.image.tag }}
+          imagePullPolicy: {{ .Values.gateway.image.pullPolicy | default "IfNotPresent" }}
+          {{- if $observabilityEnabled }}
+          command:
+            - /bin/sh
+            - -c
+            - |
+              /usr/local/openresty/bin/openresty -g 'daemon off;' &
+              NGINX_PID=$!
+              (while true; do
+                sleep 3600
+                mv /var/log/nginx/access.log /var/log/nginx/access.log.1
+                kill -USR1 $NGINX_PID
+              done) &
+              wait $NGINX_PID
+          {{- end }}
+          env:
+            - name: TZ
+              value: {{ .Values.timezone | quote }}
+          ports:
+            - name: http
+              containerPort: 80
+          volumeMounts:
+            - name: nginx-conf
+              mountPath: /usr/local/openresty/nginx/conf/nginx.conf
+              subPath: nginx.conf
+            - name: lua
+              mountPath: /etc/nginx/lua
+            - name: errors
+              mountPath: /etc/nginx/errors
+            {{- if eq (include "kramerius.gateway.cachingDiskEnabled" .) "true" }}
+            - name: proxy-cache
+              mountPath: /var/cache/nginx/proxy
+            {{- end }}
+            {{- if $observabilityEnabled }}
+            - name: nginx-logs
+              mountPath: /var/log/nginx
+            {{- end }}
+          resources:
+            {{- toYaml .Values.gateway.resources | nindent 12 }}
+        {{- if $observabilityEnabled }}
+        - name: vector
+          image: {{ (default "timberio/vector" ($v.image | default dict).repository) }}:{{ (default "0.43.0-alpine" ($v.image | default dict).tag) }}
+          imagePullPolicy: {{ default "IfNotPresent" (($v.image | default dict).pullPolicy) }}
+          args: ["--config", "/etc/vector/vector.yaml"]
+          volumeMounts:
+            - name: vector-config
+              mountPath: /etc/vector
+              readOnly: true
+            - name: nginx-logs
+              mountPath: /var/log/nginx
+              readOnly: true
+            - name: vector-data
+              mountPath: /var/lib/vector
+          resources:
+            {{- toYaml ($v.resources | default dict) | nindent 12 }}
+        {{- end }}
+      volumes:
+        - name: nginx-conf
+          configMap:
+            name: gateway-openresty-nginx
+        - name: lua
+          configMap:
+            name: gateway-openresty-lua
+        - name: errors
+          configMap:
+            name: gateway-openresty-errors
+        {{- if eq (include "kramerius.gateway.cachingDiskEnabled" .) "true" }}
+        - name: proxy-cache
+          emptyDir:
+            sizeLimit: {{ (.Values.gateway.caching.disk | default dict).emptyDirSizeLimit | default "8Gi" }}
+        {{- end }}
+        {{- if $observabilityEnabled }}
+        - name: nginx-logs
+          emptyDir:
+            medium: Memory
+            sizeLimit: {{ (($v.gatewayLogs | default dict).size | default "256Mi") }}
+        - name: vector-config
+          configMap:
+            name: {{ include "kramerius.observability.vectorName" . }}-config
+        - name: vector-data
+          persistentVolumeClaim:
+            claimName: vector-data
+        {{- end }}
+

@@ -1,0 +1,99 @@
+# kramerius-public feature — values
+#
+# Configures the public-facing Kramerius 7 application instance.
+# This instance serves the search API, IIIF APIs, document viewer, and
+# OAI-PMH endpoint. It mounts Akubra stores read-only and writes only
+# to the PostgreSQL database.
+#
+# Helm enforces replicas >= 1; setting replicas: 0 will abort helm install.
+
+krameriusPublic:
+  # Number of pod replicas. Must be >= 1.
+  # Multiple replicas share read-only Akubra mounts; pod anti-affinity
+  # ensures replicas are spread across different Kubernetes nodes.
+  replicas: 1
+
+  image:
+    # Shared image for both public and curator instances.
+    repository: ceskaexpedice/kramerius
+    tag: "7.2.0"
+    # Use Always in development; pin to a digest in production.
+    pullPolicy: Always
+    # Optional imagePullSecret name for this app image.
+    pullSecret: ""
+
+  env:
+    # Tomcat Manager web UI password. Change before deploying to production.
+    TOMCAT_PASSWORD: "changeme"
+  # Base JVM memory flags. Allocate at least 4 GiB heap for production workloads.
+  catalinaOptsMemory: "-Xms4g -Xmx8g"
+  # Extra JVM flags appended after memory, javaagents, and OTEL flags.
+  catalinaOptsExtra: ""
+
+  # Optional top-level server.xml override (preferred key).
+  # Leave empty to use image default unless config.serverXml is set.
+  serverXml: ""
+
+  service:
+    sessionAffinity:
+      # Kubernetes Service session affinity for backend stickiness.
+      # Use ClientIP to keep requests from the same source IP on one pod.
+      type: ClientIP
+      clientIPTimeoutSeconds: 10800
+
+  config:
+    # Freeform key=value lines appended verbatim to the generated
+    # configuration.properties. Use for properties not yet exposed as
+    # explicit chart values (e.g. experimental timeouts, feature flags).
+    configurationPropertiesExtra:
+      - key: kramerius.public.enabled
+        value: "true"
+
+    # Legacy location for server.xml override (kept for compatibility).
+    # Prefer top-level krameriusPublic.serverXml above.
+    serverXml: ""
+
+  # Kubernetes liveness probe definition.
+  # Leave empty ({}) to use the chart default (HTTP GET on /search/api/client/v7.0/info).
+  livenessProbe: {}
+
+  # Kubernetes readiness probe definition.
+  # Leave empty ({}) to use the chart default.
+  readinessProbe: {}
+
+  resources:
+    requests:
+      # Minimum CPU guaranteed. Kramerius search API can burst significantly;
+      # set request low enough to allow scheduling but ensure the node has
+      # capacity for the limit.
+      cpu: "500m"
+      # Minimum memory. Should reflect expected steady-state heap usage.
+      # Rule of thumb: requests.memory ≈ -Xms + 2Gi overhead.
+      memory: 6Gi
+    limits:
+      # Maximum CPU. Public instances serving concurrent users benefit from
+      # a higher limit (2000m–4000m) during traffic spikes.
+      cpu: "2000m"
+      # Hard memory ceiling. Must exceed -Xmx to leave room for Metaspace,
+      # thread stacks, native libraries, and code cache.
+      # Rule of thumb: limits.memory ≥ -Xmx + 3Gi
+      memory: 11Gi
+
+  javaagents:
+    - name: some-other-javaagent
+      path: /usr/local/tomcat/lib/javaagents/some-other-javaagent.jar
+      options:
+        - key: some-other-javaagent.option
+          value: some-other-javaagent.value
+
+  # Tomcat access and application log storage.
+  # type: pvc           — chart creates a new PVC
+  # type: existingClaim — chart binds to a pre-existing PVC
+  tomcatLogs:
+    type: pvc
+    # Name of a pre-existing PVC (required when type: existingClaim).
+    existingClaim: ""
+    # Must support ReadWriteMany for multi-replica deployments.
+    storageClass: nfs
+    # PVC size (used when type: pvc).
+    size: 5Gi

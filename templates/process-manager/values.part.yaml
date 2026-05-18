@@ -1,0 +1,68 @@
+# values.part.yaml — process-manager
+#
+# This file documents the values keys owned by the process-manager feature.
+# Paste the relevant section into your site-specific values.yaml (or a values override file).
+#
+# Dependencies on shared values:
+#   databases.process — JDBC host/port/db and credentials (see database/values.part.yaml)
+#   javaagent.*              — see commons-tomcat/values.part.yaml
+#   storages.javaagents      — PVC that supplies javaagent JARs (read-only mount)
+
+processManager:
+  image:
+    repository: ceskaexpedice/process-manager
+    tag: "1.5"
+    pullPolicy: Always
+    # Optional imagePullSecret name for process-manager image.
+    pullSecret: ""
+
+  # Base JVM memory flags. Keep -Xmx consistent with resources.limits.memory below.
+  catalinaOptsMemory: "-Xms512M -Xmx2G"
+  env:
+    # JDBC_URL / JDBC_USERNAME / JDBC_PASSWORD are set by the chart from databases.process;
+    # do not add them here — they are ignored if present.
+
+  config:
+    # Override the Tomcat server.xml. Leave empty to use the image default.
+    # Provide a full XML document as a multi-line string when non-empty.
+    serverXml: ""
+
+  # Liveness probe override. When empty, the image default applies.
+  # Example:
+  #   livenessProbe:
+  #     httpGet:
+  #       path: /process/api/health
+  #       port: 8080
+  #     initialDelaySeconds: 60
+  #     periodSeconds: 20
+  livenessProbe: {}
+
+  # Readiness probe override. When empty, the image default applies.
+  readinessProbe: {}
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 640Mi
+    limits:
+      # Must be large enough to accommodate JAVA_OPTS -Xmx plus off-heap overhead.
+      cpu: 500m
+      memory: 3Gi
+
+  # PVC for Tomcat logs (access log, catalina.out).
+  # Created via volumeClaimTemplates on the StatefulSet so each pod gets its own volume.
+  tomcatLogs:
+    # type: pvc is the only supported value for process-manager.
+    type: pvc
+
+    # StorageClass to use when the chart creates the PVC.
+    storageClass: nfs
+
+    size: 5Gi
+
+    # Set to reuse an existing PVC instead of letting the chart create one.
+    existingClaim: ""
+
+    # NFS-specific fields used when the StorageClass requires a manual PersistentVolume.
+    nfsServer: ""
+    nfsPath: ""

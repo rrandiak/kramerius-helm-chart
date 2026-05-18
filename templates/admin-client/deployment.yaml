@@ -1,0 +1,45 @@
+{{- if .Values.adminClient.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: admin-client
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "kramerius.labels" . | nindent 4 }}
+    app.kubernetes.io/name: admin-client
+    app.kubernetes.io/component: admin-client
+spec:
+  replicas: {{ .Values.adminClient.replicas }}
+  selector:
+    matchLabels:
+      {{- include "kramerius.adminClient.matchLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "kramerius.adminClient.matchLabels" . | nindent 8 }}
+      annotations:
+        checksum/admin-client-values: {{ include "kramerius.checksum.adminClientPod" . | quote }}
+    spec:
+      {{- if .Values.adminClient.image.pullSecret }}
+      imagePullSecrets:
+        - name: {{ .Values.adminClient.image.pullSecret | quote }}
+      {{- end }}
+      containers:
+        - name: admin-client
+          image: {{ .Values.adminClient.image.repository }}:{{ .Values.adminClient.image.tag }}
+          imagePullPolicy: {{ .Values.adminClient.image.pullPolicy | default "Always" }}
+          ports:
+            - containerPort: 80
+              name: http
+          volumeMounts:
+            - name: admin-client-globals
+              mountPath: /usr/share/nginx/html/assets/shared/globals.js
+              subPath: globals.js
+              readOnly: true
+          resources:
+            {{- toYaml .Values.adminClient.resources | nindent 12 }}
+      volumes:
+        - name: admin-client-globals
+          configMap:
+            name: admin-client-globals
+{{- end }}

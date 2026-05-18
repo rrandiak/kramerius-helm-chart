@@ -1,0 +1,39 @@
+# === Media Storage Properties ===
+
+# Write images to imageserver
+convert.useImageServer=false
+
+# Base directory of the image server data. Image files will be copied to the subfolders of this directory, name of hte subfolder is the packageid of the imported PSP
+convert.imageServerDirectory=/mzk
+
+# If true, convertor will use the contract name as subfolder name. otherwise it will use the uuid of the root document as the subfolder name
+convert.useContractAsSubfoldersName=true
+
+convert.imageServerDirectorySubfolders=true
+
+convert.imageServerSuffix.removeFilenameExtensions=true
+
+# base URL of the tiles references from FOXML to imageserver. This base URL will be appended with packageid, image filename and convert.imageServerSuffix.tiles (see properties convert.imageServerSuffix...)
+convert.imageServerTilesURLPrefix=https://imageserver.mzk.cz${convert.imageServerDirectory}
+
+# base URL of the image references from FOXML to imageserver. This base URL will be appended with packageid, image filename and appropriate suffix (see properties convert.imageServerSuffix...)
+convert.imageServerImagesURLPrefix=http://imageserver.mzk.cz${convert.imageServerDirectory}
+
+# suffix of the image reference URL for full size images
+convert.imageServerSuffix.big=/big.jpg
+
+# suffix of the image reference URL for thumbnail images
+convert.imageServerSuffix.thumb=/thumb.jpg
+
+# suffix of the image reference URL for preview images
+convert.imageServerSuffix.preview=/preview.jpg
+
+# suffix of the image reference URL for zoomify/deepzoom tiles
+convert.imageServerSuffix.tiles=
+
+# Audioserver properties
+convert.useAudioServer=true
+convert.audioServerURLPrefix=http://audioserver.mzk.cz
+convert.audioServerDirectory=/mnt/audioserver
+convert.audioServerDirectorySubfolders=true
+

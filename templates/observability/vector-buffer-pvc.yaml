@@ -1,0 +1,22 @@
+{{- if eq (include "kramerius.observability.enabled" .) "true" }}
+{{- $v := ((.Values.observability | default dict).vector | default dict) }}
+{{- $storage := ($v.buffer | default dict).storage | default dict }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: vector-data
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "kramerius.labels" . | nindent 4 }}
+    app.kubernetes.io/name: {{ include "kramerius.observability.vectorName" . }}
+    app.kubernetes.io/component: observability
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: {{ $storage.size | default "1Gi" }}
+  {{- if $storage.storageClass }}
+  storageClassName: {{ $storage.storageClass | quote }}
+  {{- end }}
+{{- end }}

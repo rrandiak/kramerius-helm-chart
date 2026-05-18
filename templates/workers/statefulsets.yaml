@@ -1,0 +1,186 @@
+{{/* Worker groups — StatefulSet per group */}}
+{{- range .Values.workerGroups }}
+{{- $group := . }}
+{{- $root := $ }}
+{{- $affinityType := ($group.affinity | default dict).type | default "soft" }}
+{{- $workersDefaults := ($root.Values.workersDefaults | default dict) }}
+{{- $defaultImg := ($workersDefaults.image | default dict) }}
+{{- $groupImg := $group.image | default dict }}
+{{- $defaultPS := $defaultImg.pullSecret | default "" | trim }}
+{{- $groupPS := $groupImg.pullSecret | default "" | trim }}
+{{- $workerJavaagents := concat ($workersDefaults.javaagents | default list) ($group.javaagents | default list) }}
+{{- if and ($group.catalinaOptsOverride | default "" | trim) ($group.catalinaOptsExtra | default "" | trim) }}
+  {{- fail (printf "workerGroups[%s]: catalinaOptsOverride and catalinaOptsExtra are mutually exclusive" $group.name) }}
+{{- end }}
+{{- $wkReservedMounts := list "/root/.kramerius4" "/root/.kramerius4/configuration.properties" "/root/.kramerius4/mail.properties" "/root/.kramerius4/lp.xml" "/usr/local/tomcat/conf/logging.properties" "/usr/local/tomcat/logs" "/root/.processplatform" }}
+{{- range $group.customConfigs | default list }}
+  {{- if has .mountPath $wkReservedMounts }}
+    {{- fail (printf "workerGroups[%s].customConfigs: mountPath %q conflicts with a built-in volume mount" $group.name .mountPath) }}
+  {{- end }}
+{{- end }}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: worker-{{ $group.name }}
+  namespace: {{ $root.Values.namespace }}
+  labels:
+    {{- include "kramerius.labels" $root | nindent 4 }}
+    app.kubernetes.io/name: worker-{{ $group.name }}
+    app.kubernetes.io/component: worker
+spec:
+  replicas: {{ $group.replicas }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: worker-{{ $group.name }}
+      app.kubernetes.io/component: worker
+  serviceName: worker-{{ $group.name }}
+  podManagementPolicy: OrderedReady
+  updateStrategy:
+    type: RollingUpdate
+  revisionHistoryLimit: 2
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: worker-{{ $group.name }}
+        app.kubernetes.io/component: worker
+      annotations:
+        checksum/worker-values: {{ include "kramerius.checksum.workerPod" (dict "root" $root "group" $group) | quote }}
+    spec:
+      serviceAccountName: worker-{{ $group.name }}
+      {{- if or $defaultPS $groupPS }}
+      imagePullSecrets:
+        {{- if $defaultPS }}
+        - name: {{ $defaultPS | quote }}
+        {{- end }}
+        {{- if and $groupPS (ne $groupPS $defaultPS) }}
+        - name: {{ $groupPS | quote }}
+        {{- end }}
+      {{- end }}
+      affinity:
+        {{- include "kramerius.podAntiAffinity" (dict
+          "type"        $affinityType
+          "matchLabels" (dict "app.kubernetes.io/name" (printf "worker-%s" $group.name) "app.kubernetes.io/component" "worker")
+        ) | nindent 8 }}
+      containers:
+        - name: worker-{{ $group.name }}
+          image: {{ include "kramerius.workerImage" (dict "group" $group "values" $root.Values) }}
+          imagePullPolicy: {{ include "kramerius.workerImagePullPolicy" (dict "group" $group "values" $root.Values) }}
+          ports:
+            - containerPort: 8080
+              name: http
+          envFrom:
+            - configMapRef:
+                name: timezone-config
+          env:
+            # In-cluster callback URL for process-manager (headless Service DNS, not public)
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: WORKER_BASE_URL
+              value: "http://$(POD_NAME).worker-{{ $group.name }}.{{ $root.Values.namespace }}.svc.cluster.local:8080/worker/api/"
+            - name: WORKER_ID
+              value: "$(POD_NAME)"
+            - name: WORKER_LOOP_SLEEP_SECS
+              value: {{ $group.workerLoopSleepSecs | default 10 | quote }}
+            - name: WORKER_LOOP_PRINT_SECS
+              value: {{ $group.workerLoopPrintSecs | default 30 | quote }}
+            - name: MANAGER_BASE_URL
+              value: {{ include "kramerius.processManagerUrl" $root | quote }}
+            {{- if $group.profilesSubset }}
+            - name: PROFILES_SUBSET
+              value: {{ $group.profilesSubset | quote }}
+            {{- end }}
+            {{- $wEnv := mergeOverwrite (deepCopy ($group.env | default dict)) ($group.shadowEnv | default dict) }}
+            {{- range $k, $v := $wEnv }}
+            {{- if ne $k "CATALINA_OPTS" }}
+            - name: {{ $k }}
+              value: {{ $v | quote }}
+            {{- end }}
+            {{- end }}
+            {{- if not (hasKey $wEnv "HAZELCAST_SERVER_ADDRESSES") }}
+            - name: HAZELCAST_SERVER_ADDRESSES
+              value: {{ include "kramerius.hazelcastServerAddresses" $root | quote }}
+            {{- end }}
+            {{- $otelDefaults := (((($root.Values.observability | default dict).otel | default dict).workersDefault) | default dict) }}
+            - name: CATALINA_OPTS
+              value: {{ if ($group.catalinaOptsOverride | default "") | trim }}{{ $group.catalinaOptsOverride | trim | quote }}{{ else }}{{ include "kramerius.mergeCatalinaOpts" (dict "root" $root "memory" ($group.catalinaOptsMemory | default "") "javaagents" $workerJavaagents "extra" ($group.catalinaOptsExtra | default "") "otelComp" (default $otelDefaults ($group.otel | default dict)) "otelServiceName" (printf "worker-%s" $group.name) "globalShadow" ((($root.Values.shadow | default dict).catalinaOpts) | default "")) | quote }}{{ end }}
+          volumeMounts:
+{{- include "kramerius.perAppJavaagentVolumeMounts" (dict "root" $root "javaagents" $workerJavaagents "otelComp" (default $otelDefaults ($group.otel | default dict))) | nindent 12 }}
+            - mountPath: /root/.kramerius4
+              name: worker-config-dir
+            - mountPath: /root/.kramerius4/configuration.properties
+              name: worker-config
+              subPath: configuration.properties
+              readOnly: true
+            - mountPath: /root/.kramerius4/mail.properties
+              name: worker-config
+              subPath: mail.properties
+              readOnly: true
+            - mountPath: /usr/local/tomcat/conf/logging.properties
+              name: workers-logging
+              subPath: logging.properties
+              readOnly: true
+            - mountPath: /root/.kramerius4/lp.xml
+              name: worker-config
+              subPath: lp.xml
+              readOnly: true
+            {{- if (include "kramerius.workers.serverXml" (dict "root" $root "group" $group) | trim) }}
+            - mountPath: /usr/local/tomcat/conf/server.xml
+              name: worker-config
+              subPath: server.xml
+              readOnly: true
+            {{- end }}
+            {{- range $i, $c := $group.customConfigs | default list }}
+            - mountPath: {{ $c.mountPath }}
+              name: worker-config
+              subPath: custom-config-{{ $i }}
+              readOnly: true
+            {{- end }}
+            - mountPath: /usr/local/tomcat/logs
+              name: worker-tomcat-logs
+              readOnly: false
+            - mountPath: /root/.processplatform
+              name: worker-process-logs
+              readOnly: false
+            {{- if eq (include "kramerius.akubra.enabled" $root) "true" }}
+            - mountPath: /data/akubra/objectStore
+              name: akubra-objectstore
+              readOnly: false
+            - mountPath: /data/akubra/datastreamStore
+              name: akubra-datastream
+              readOnly: false
+            {{- end }}
+{{- include "kramerius.importStorageVolumeMounts" (dict "root" $root "readOnly" false) | nindent 12 }}
+{{- include "kramerius.mediaStorageVolumeMounts" (dict "root" $root "readOnly" false) | nindent 12 }}
+          {{- with $group.livenessProbe }}
+          livenessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with $group.readinessProbe }}
+          readinessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          resources:
+            {{- toYaml $group.resources | nindent 12 }}
+      volumes:
+        - name: worker-config-dir
+          emptyDir: {}
+        - name: worker-config
+          configMap:
+            name: worker-{{ $group.name }}-config
+        - name: workers-logging
+          configMap:
+            name: workers-logging
+{{ include "kramerius.perAppJavaagentVolumes" (dict "root" $root "javaagents" $workerJavaagents "otelComp" (default $otelDefaults ($group.otel | default dict))) | nindent 8 }}
+{{- if eq (include "kramerius.akubra.enabled" $root) "true" }}
+{{- include "kramerius.sharedStorageVolume" (dict "root" $root "volumeName" "akubra-objectstore" "storageKey" "akubra-object-store") | nindent 8 }}
+{{- include "kramerius.sharedStorageVolume" (dict "root" $root "volumeName" "akubra-datastream" "storageKey" "akubra-datastream-store") | nindent 8 }}
+{{- end }}
+{{- include "kramerius.importStorageVolumes" (dict "root" $root) | nindent 8 }}
+{{- include "kramerius.mediaStorageVolumes" (dict "root" $root) | nindent 8 }}
+{{- include "kramerius.tomcatLogsNfsVolume" (dict "root" $root "volumeName" "worker-tomcat-logs" "tomcatLogs" ($group.tomcatLogs | default ($workersDefaults.tomcatLogs | default dict))) | nindent 8 }}
+{{- include "kramerius.tomcatLogsNfsVolume" (dict "root" $root "volumeName" "worker-process-logs" "tomcatLogs" ($group.processLogs | default ($workersDefaults.processLogs | default dict))) | nindent 8 }}
+{{- include "kramerius.workerVolumeClaimTemplates" (dict "root" $root "tomcatLogs" ($group.tomcatLogs | default ($workersDefaults.tomcatLogs | default dict)) "processLogs" ($group.processLogs | default ($workersDefaults.processLogs | default dict))) | nindent 2 }}
+{{- end }}

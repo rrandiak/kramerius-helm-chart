@@ -1,0 +1,27 @@
+{{/* Kramerius Public — ConfigMap (configuration.properties, optional server.xml) */}}
+{{- if and (.Values.krameriusPublic.config.configurationPropertiesOverride | default "" | trim) (.Values.krameriusPublic.config.configurationPropertiesExtra | default "" | trim) }}
+  {{- fail "krameriusPublic.config: configurationPropertiesOverride and configurationPropertiesExtra are mutually exclusive" }}
+{{- end }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kramerius-public-config
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "kramerius.labels" . | nindent 4 }}
+data:
+  configuration.properties: |
+    {{- if (.Values.krameriusPublic.config.configurationPropertiesOverride | default "") | trim }}
+    {{- .Values.krameriusPublic.config.configurationPropertiesOverride | nindent 4 }}
+    {{- else }}
+    {{- include "kramerius.public.configurationProperties" . | nindent 4 }}
+    {{- end }}
+  {{- $serverXml := include "kramerius.public.serverXml" . | trim }}
+  {{- if $serverXml }}
+  server.xml: |
+    {{- $serverXml | nindent 4 }}
+  {{- end }}
+  {{- range $i, $c := .Values.krameriusPublic.customConfigs }}
+  custom-config-{{ $i }}: |
+    {{- $c.content | nindent 4 }}
+  {{- end }}

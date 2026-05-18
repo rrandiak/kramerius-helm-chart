@@ -1,0 +1,25 @@
+### Postgresql
+
+# Kramerius DB
+jdbcUrl=jdbc:postgresql://cluster-postgres-rw:5432/kramerius
+jdbcUserName=krameriusAdmin
+jdbcUserPass=<pass>
+jdbcMaximumPoolSize=30
+jdbcMaximumIdleSize=10
+jdbcIdleTimeout=600000
+jdbcMaxLifetime=1800000
+jdbcLeakDetectionThreshold=60000
+jdbcConnectionTimeout=30000
+
+# Users DB
+userJdbcUrl=jdbc:postgresql://cluster-postgres-rw:5432/users
+userJdbcUserName=usersAdmin
+userJdbcUserPass=<pass>
+userJdbcLeakDetectionThreshold=60000
+userJdbcMaximumPoolSize=30
+userJdbcConnectionTimeout=30000
+
+# Cache DB (for CDK)
+cdk.cache.jdbcUrl=jdbc:postgresql://cluster-postgres-rw:5432/cache
+cdk.cache.jdbcUserName=cacheAdmin
+cdk.cache.jdbcUserPass=<pass>

@@ -1,0 +1,111 @@
+# kramerius-curator feature — values
+#
+# Configures the administrative Kramerius 7 instance.
+# The curator mounts Akubra stores read-write and is the sole write path
+# for all content administration operations (FOXML editing, datastream
+# management, import, re-indexing).
+#
+# Multiple replicas are supported. Concurrent write safety is coordinated
+# through the Hazelcast lock server. Pod anti-affinity rules ensure replicas
+# land on different Kubernetes nodes.
+#
+# Helm enforces replicas >= 1; setting replicas: 0 will abort helm install.
+
+krameriusCurator:
+  # Number of pod replicas. Must be >= 1.
+  # When replicas > 1, the chart automatically adds podAntiAffinity rules
+  # (preferredDuringSchedulingIgnoredDuringExecution, hostname topology key).
+  replicas: 1
+
+  image:
+    # Shared image with the public instance; behaviour differs via config.
+    repository: ceskaexpedice/kramerius
+    tag: "7.2.0"
+    # Use Always in development; pin to a digest in production.
+    pullPolicy: Always
+    # Optional imagePullSecret name for this app image.
+    pullSecret: ""
+
+  env:
+    # Tomcat Manager web UI password. Change before deploying to production.
+    TOMCAT_PASSWORD: "changeme"
+  # Base JVM memory flags. For heavy batch operations (bulk imports,
+  # collection-wide re-indexing) consider increasing -Xmx to 10–12 GiB
+  # and raising resources.limits.memory proportionally.
+  catalinaOptsMemory: "-Xms4g -Xmx8g"
+  # Extra JVM flags appended after memory, javaagents, and OTEL flags.
+  catalinaOptsExtra: ""
+
+  # Optional top-level server.xml override (preferred key).
+  # Leave empty to use image default unless config.serverXml is set.
+  serverXml: ""
+
+  service:
+    sessionAffinity:
+      # Kubernetes Service session affinity for backend stickiness.
+      # Use ClientIP to keep requests from the same source IP on one pod.
+      type: ClientIP
+      clientIPTimeoutSeconds: 10800
+
+  config:
+    # Freeform key=value lines appended verbatim to the generated
+    # configuration.properties. Use for properties not yet exposed as
+    # explicit chart values.
+    # Example:
+    #   configurationPropertiesExtra:
+    #     - key: import.thread.count
+    #       value: "4"
+    #     - key: batch.reindex.pageSize
+    #       value: "500"
+    configurationPropertiesExtra:
+      - key: kramerius.curator.enabled
+        value: "true"
+
+    # Legacy location for server.xml override (kept for compatibility).
+    # Prefer top-level krameriusCurator.serverXml above.
+    serverXml: ""
+
+  # Kubernetes liveness probe definition.
+  # Leave empty ({}) to use the chart default (HTTP GET on /search/api/client/v7.0/info).
+  livenessProbe: {}
+
+  # Kubernetes readiness probe definition.
+  # Leave empty ({}) to use the chart default.
+  readinessProbe: {}
+
+  resources:
+    requests:
+      # Curator typically handles fewer concurrent users than public;
+      # CPU request is set lower to allow efficient bin-packing on nodes.
+      cpu: "250m"
+      # Minimum memory, sized for steady-state heap usage.
+      memory: 6Gi
+    limits:
+      # Raise for sustained batch workloads (import pipelines, re-indexing).
+      cpu: "1000m"
+      # Hard memory ceiling. Must exceed -Xmx by at least 2–3 GiB.
+      memory: 11Gi
+
+  javaagents:
+    - name: some-other-javaagent
+      path: /usr/local/tomcat/lib/javaagents/some-other-javaagent.jar
+      options:
+        - key: some-other-javaagent.option
+
+  # Tomcat access and application log storage.
+  # type: pvc          — chart creates a new PVC
+  # type: nfs          — chart creates a PVC backed by a static NFS PV
+  # type: existingClaim — chart binds to a pre-existing PVC
+  tomcatLogs:
+    type: pvc
+    # NFS server address (required when type: nfs).
+    nfsServer: ""
+    # NFS export path (required when type: nfs).
+    nfsPath: ""
+    # Name of a pre-existing PVC (required when type: existingClaim).
+    existingClaim: ""
+    # StorageClass used when type: pvc or type: nfs.
+    # Must support ReadWriteMany for multi-replica deployments.
+    storageClass: nfs
+    # PVC size (used when type: pvc or type: nfs).
+    size: 5Gi

@@ -1,0 +1,19 @@
+{{- if eq (include "kramerius.observability.enabled" .) "true" }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "kramerius.observability.hyperdxName" . }}
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "kramerius.labels" . | nindent 4 }}
+    app.kubernetes.io/name: {{ include "kramerius.observability.hyperdxName" . }}
+    app.kubernetes.io/component: observability
+spec:
+  selector:
+    app.kubernetes.io/name: {{ include "kramerius.observability.hyperdxName" . }}
+    app.kubernetes.io/component: observability
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+{{- end }}

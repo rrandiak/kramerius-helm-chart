@@ -1,0 +1,14 @@
+{{- if eq (include "kramerius.observability.enabled" .) "true" }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: geoip-scripts
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "kramerius.labels" . | nindent 4 }}
+    app.kubernetes.io/name: geoip-scripts
+    app.kubernetes.io/component: observability
+data:
+  download-geoip.sh: |
+{{ .Files.Get "files/observability/download-geoip.sh" | indent 4 }}
+{{- end }}

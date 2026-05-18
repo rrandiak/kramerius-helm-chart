@@ -1,0 +1,198 @@
+# Observability stack values: Vector + ClickHouse + HyperDX + OTEL settings.
+# When observability.enabled=true, the chart renders baseline manifests for:
+# - Vector (sidecar in gateway-openresty Deployment + ConfigMap)
+#     nginx access_log is redirected to a shared emptyDir; Vector reads and ships it.
+# - ClickHouse (StatefulSet + Service + PVC)
+# - HyperDX (Deployment + Service)
+# - Vector buffer PVC (optional, when vector.buffer.storage.size is set)
+
+observability:
+  # Set to true to deploy Vector + ClickHouse + HyperDX.
+  enabled: false
+
+  vector:
+    image:
+      repository: timberio/vector
+      tag: "0.43.0-alpine"
+      pullPolicy: IfNotPresent
+      pullSecret: ""
+    # VRL transform pipeline configuration (rendered into ConfigMap).
+    # Transforms cover: JSON parsing, field normalization, private/public IP
+    # classification, latency extraction, referer/user-agent enrichment.
+    pipeline: ""
+    # GeoIP enrichment — always enabled when observability is on.
+    # Two DB-IP free databases are used:
+    #   - dbip-city-lite  → continent, country, city             (stored at /var/lib/vector/geoip.mmdb)
+    #   - dbip-asn-lite   → organization                         (stored at /var/lib/vector/asn.mmdb)
+    # An init container downloads both on first run; a CronJob refreshes them monthly.
+    geoip:
+      # Image for the init container and CronJob download step.
+      image:
+        repository: alpine
+        tag: "3"
+        pullPolicy: IfNotPresent
+      updater:
+        # Cron schedule for the monthly DB refresh (default: 5th at 04:00).
+        schedule: "0 4 5 * *"
+    # In-memory (tmpfs) volume shared between openresty and the vector sidecar.
+    # nginx rotates access.log → access.log.1 every hour via SIGUSR1.
+    # Counts against the pod's memory limit. Keep small — 2 × peak hourly log size.
+    gatewayLogs:
+      size: "256Mi"
+    resources:
+      requests:
+        cpu: "100m"
+        memory: "128Mi"
+      limits:
+        cpu: "500m"
+        memory: "512Mi"
+    buffer:
+      # PVC for Vector's data directory — holds file checkpoints and disk buffer.
+      # Always provisioned; defaults to 1Gi. Increase if using Vector's disk buffer sink.
+      storage:
+        storageClass: ""
+        size: "1Gi"
+
+  clickhouse:
+    image:
+      repository: clickhouse/clickhouse-server
+      tag: "25.4-alpine"
+      pullPolicy: IfNotPresent
+      pullSecret: ""
+    storage:
+      storageClass: ""
+      size: 256Gi
+    # Retention: data older than retentionDays is dropped via TTL expressions on tables.
+    retentionDays: 90
+    resources:
+      requests:
+        cpu: "500m"
+        memory: "2Gi"
+      limits:
+        cpu: "4"
+        memory: "16Gi"
+
+  hyperdx:
+    image:
+      repository: hyperdx/hyperdx
+      tag: "latest"
+      pullPolicy: IfNotPresent
+      pullSecret: ""
+    # Required: stable random string shared between HyperDX internal services.
+    # Generate: openssl rand -hex 32
+    apiKey: ""
+    resources:
+      requests:
+        cpu: "100m"
+        memory: "256Mi"
+      limits:
+        cpu: "1"
+        memory: "1Gi"
+    # Hostname for the HyperDX UI (defined in networking feature).
+    # host: "hyperdx.k7.example.com"
+
+  mongodb:
+    image:
+      repository: mongo
+      tag: "7"
+      pullPolicy: IfNotPresent
+      pullSecret: ""
+    storage:
+      storageClass: ""
+      size: "1Gi"
+    resources:
+      requests:
+        cpu: "100m"
+        memory: "256Mi"
+      limits:
+        cpu: "500m"
+        memory: "1Gi"
+
+  # ---------------------------------------------------------------------------
+  # OpenTelemetry distributed tracing
+  # ---------------------------------------------------------------------------
+  # Injects the OTEL javaagent into selected Tomcat-based workloads.
+  # Traces are sent to the in-cluster OTEL Collector (otel-collector:4317),
+  # which applies tail sampling and writes to ClickHouse via the contrib
+  # clickhouse exporter (TCP 9000). The collector creates the otel_traces
+  # table automatically.
+  #
+  # Prerequisites:
+  #   1. The OTEL javaagent JAR must be present in the javaagents PVC at the
+  #      path matching otel.jarName below.
+  #   2. otel.collector.enabled=true — the collector is required; there is no
+  #      direct path from JVM agents to ClickHouse.
+  #
+  # Service naming: each workload gets otel.service.name=<component> and
+  # otel.service.instance.id=<pod-name> (resolved at runtime via Kubernetes
+  # env-var substitution of $(POD_NAME)).
+  otel:
+    # Filename of the OTEL javaagent JAR inside the javaagents PVC.
+    # This jar is mounted as a separate file alongside any other javaagents.
+    # Example: opentelemetry-javaagent.jar
+    jarName: ""
+
+    # OTLP transport protocol: grpc (default) or http/protobuf
+    protocol: grpc
+
+    collector:
+      # Enable in-cluster OTEL Collector for tail sampling and processing.
+      enabled: false
+      replicas: 1
+      image:
+        repository: otel/opentelemetry-collector-contrib
+        tag: "0.104.0"
+        pullPolicy: IfNotPresent
+        pullSecret: ""
+      resources:
+        requests:
+          cpu: "100m"
+          memory: "256Mi"
+        limits:
+          cpu: "1"
+          memory: "1Gi"
+      # Tail sampling defaults used by generated collector config.
+      decisionWait: 10s
+      numTraces: 50000
+      expectedNewTracesPerSec: 1000
+      latencyThresholdMs: 1000
+      probabilisticPercentage: 10
+      # Optional full collector config override. When set, this string is used
+      # verbatim as collector.yaml instead of generated defaults.
+      config: ""
+
+    # --- Per-component settings ---
+    # Each component can independently enable OTEL tracing and filter which
+    # methods are instrumented via otel.instrumentation.methods.include.
+    # includeMethods entries follow the format:
+    #   "fully.qualified.ClassName[methodName,otherMethod]"
+
+    krameriusPublic:
+      enabled: false
+      # Methods to include in tracing for the public Kramerius instance.
+      # Example:
+      #   includeMethods:
+      #     - "cz.incad.kramerius.rest.api.k5.client.search.SearchResource[search]"
+      includeMethods: []
+
+    krameriusCurator:
+      enabled: false
+      # Methods to include in tracing for the curator (admin) instance.
+      includeMethods: []
+
+    processManager:
+      enabled: false
+      # Methods to include in tracing for the process manager.
+      includeMethods: []
+
+    # Worker groups inherit per-group otel settings from the workerGroups list
+    # (add an otel block to each group entry in workers/values.part.yaml):
+    #   workerGroups:
+    #     - name: curator
+    #       otel:
+    #         enabled: true
+    #         includeMethods: []
+    # The following default applies to any group that omits its own otel block:
+    workersDefault:
+      enabled: false
+      includeMethods: []

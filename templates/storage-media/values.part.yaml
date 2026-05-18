@@ -1,0 +1,89 @@
+# values.part.yaml — Storage Media
+#
+# Focused excerpt from values.yaml covering media output storage for
+# imageserver, audioserver, and pdfserver volumes.
+#
+# These volumes are written by workers during ingestion/conversion and read by
+# external media server processes (IIPImage, Cantaloupe, audio server, PDF server)
+# that mount the same NFS shares from outside the Kubernetes cluster.
+#
+# A volume is enabled by setting its "type" key.
+# Leaving a block empty (all keys commented out) disables the volume entirely —
+# no PV/PVC is created and the volume is not mounted in worker pods.
+#
+# Backend types:
+#   type: nfs  — chart creates a PV + PVC bound to an NFS export.
+#                If nfsServer is empty, storages.defaultNfsServer is used.
+#                If existingClaim is set, PV/PVC creation is skipped.
+#   type: pvc  — chart creates only a PVC (dynamic provisioning via storageClass).
+#                If existingClaim is set, PVC creation is also skipped.
+
+convert:
+  imageserver:
+    enabled: false
+    directory: ""            # e.g. /mzk — base directory on the imageserver
+    useContract: true        # use contract name as subfolder (vs. root document UUID)
+    subfolders: true         # enable directory subfoldering
+    removeExtensions: true   # strip filename extensions from image suffix URLs
+    tilesUrlPrefix: ""       # e.g. https://imageserver.example.com/path/
+    imagesUrlPrefix: ""      # e.g. http://imageserver.example.com/path/
+    suffixBig: "/big.jpg"
+    suffixThumb: "/thumb.jpg"
+    suffixPreview: "/preview.jpg"
+    suffixTiles: ""
+  audioserver:
+    enabled: false
+    urlPrefix: ""            # e.g. http://audioserver.example.com
+    directory: ""            # e.g. /mnt/audioserver
+    subfolders: true
+
+storages:
+  # Fallback NFS server IP/hostname used for any NFS volume with an empty nfsServer.
+  defaultNfsServer: ""
+
+  # ---------------------------------------------------------------------------
+  # Image server storage — JPEG2000/IIIF image tiles and pyramidal derivatives.
+  # Mounted read-write on workers at: /data/imageserver
+  # Read by external image server (IIPImage, Cantaloupe, etc.) via same NFS share.
+  # ---------------------------------------------------------------------------
+  imageserver:
+    # Uncomment and configure to enable this volume.
+    # type: nfs
+    # nfsServer: ""                  # Leave empty to use storages.defaultNfsServer
+    # nfsPath: /data/imageserver
+    # existingClaim: ""              # Set to skip PV/PVC creation
+    # storageClass: nfs
+    # size: 50Gi
+    # mountOptions:
+    #   - hard
+    #   - nfsvers=4.1
+
+  # ---------------------------------------------------------------------------
+  # Audio server storage — compressed audio derivatives (MP3, OGG, etc.).
+  # Mounted read-write on workers at: /data/audioserver
+  # Read by external audio streaming server via same NFS share.
+  # ---------------------------------------------------------------------------
+  audioserver:
+    # Uncomment and configure to enable this volume.
+    # type: nfs
+    # nfsServer: ""
+    # nfsPath: /data/audioserver
+    # existingClaim: ""
+    # storageClass: nfs
+    # size: 10Gi
+    # mountOptions: []
+
+  # ---------------------------------------------------------------------------
+  # PDF server storage — generated PDF output for document download.
+  # Mounted read-write on workers at: /data/pdfserver
+  # Read by external PDF service via same NFS share.
+  # ---------------------------------------------------------------------------
+  pdfserver:
+    # Uncomment and configure to enable this volume.
+    # type: nfs
+    # nfsServer: ""
+    # nfsPath: /data/pdfserver
+    # existingClaim: ""
+    # storageClass: nfs
+    # size: 10Gi
+    # mountOptions: []

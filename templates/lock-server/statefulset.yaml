@@ -1,0 +1,48 @@
+{{/* Lock server — Hazelcast StatefulSet (in-memory distributed locks) */}}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: hazelcast
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "kramerius.labels" . | nindent 4 }}
+    app.kubernetes.io/name: hazelcast
+    app.kubernetes.io/component: lock-server
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "kramerius.lockServer.matchLabels" . | nindent 6 }}
+  serviceName: hazelcast
+  updateStrategy:
+    type: RollingUpdate
+  revisionHistoryLimit: 2
+  template:
+    metadata:
+      labels:
+        {{- include "kramerius.lockServer.matchLabels" . | nindent 8 }}
+      annotations:
+        checksum/hazelcast-values: {{ include "kramerius.checksum.hazelcastPod" . | quote }}
+    spec:
+      serviceAccountName: hazelcast
+      {{- if .Values.hazelcast.image.pullSecret }}
+      imagePullSecrets:
+        - name: {{ .Values.hazelcast.image.pullSecret | quote }}
+      {{- end }}
+      containers:
+        - name: hazelcast
+          image: {{ .Values.hazelcast.image.repository }}:{{ .Values.hazelcast.image.tag }}
+          imagePullPolicy: {{ .Values.hazelcast.image.pullPolicy | default "Always" }}
+          ports:
+            - containerPort: 5701
+              name: hazelcast
+          envFrom:
+            - configMapRef:
+                name: timezone-config
+          env:
+            {{- range $k, $v := .Values.hazelcast.env }}
+            - name: {{ $k }}
+              value: {{ $v | quote }}
+            {{- end }}
+          resources:
+            {{- toYaml .Values.hazelcast.resources | nindent 12 }}

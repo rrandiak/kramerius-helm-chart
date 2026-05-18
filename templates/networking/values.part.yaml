@@ -1,0 +1,62 @@
+# ---------------------------------------------------------------------------
+# Ingress (nginx) — one Ingress object per backend.
+# Use networking.mode: ingress XOR gatewayApi (not both).
+#
+# To protect a backend with an OIDC proxy, add the auth-url / auth-signin
+# annotations directly in that backend's annotations map.
+#
+# CDK (cdk.enabled): users DB replication across two sites needs Postgres TCP
+# between locations — not Ingress. See templates/networking/README.md.
+# ---------------------------------------------------------------------------
+networking:
+  # Set to true to create Ingress resources.
+  enabled: true
+
+  # Mode of networking.
+  # - ingress: use Ingress resources.
+  # - gatewayApi: use Gateway API resources.
+  mode: ingress
+
+  # Class name of the ingress controller.
+  # Only used if mode is ingress.
+  className: nginx
+
+  # API traffic (gateway).
+  api:
+    host: "k7.example.com"
+    tlsSecretName: kramerius-gateway-tls
+    annotations:
+      cert-manager.io/cluster-issuer: letsencrypt
+      nginx.ingress.kubernetes.io/real-ip-header: X-Forwarded-For
+
+  # Admin SPA.
+  admin:
+    host: "admin.k7.example.com"
+    tlsSecretName: kramerius-admin-tls
+    annotations:
+      cert-manager.io/cluster-issuer: letsencrypt
+      nginx.ingress.kubernetes.io/real-ip-header: X-Forwarded-For
+
+  # Process Manager UI/API. Set host: "" to omit.
+  processManager:
+    host: "process-manager.k7.example.com"
+    tlsSecretName: kramerius-process-manager-tls
+    annotations:
+      cert-manager.io/cluster-issuer: letsencrypt
+      nginx.ingress.kubernetes.io/real-ip-header: X-Forwarded-For
+
+  # Gateway management client. Set host: "" to omit (requires gateway.managementClient.enabled).
+  gatewayManager:
+    host: ""
+    tlsSecretName: gateway-manager-tls
+    annotations:
+      cert-manager.io/cluster-issuer: letsencrypt
+      nginx.ingress.kubernetes.io/real-ip-header: X-Forwarded-For
+
+  # HyperDX observability. Only created when observability.enabled: true.
+  hyperdx:
+    host: "hyperdx.k7.example.com"
+    tlsSecretName: hyperdx-tls
+    annotations:
+      cert-manager.io/cluster-issuer: letsencrypt
+      nginx.ingress.kubernetes.io/real-ip-header: X-Forwarded-For
