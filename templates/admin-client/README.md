@@ -61,7 +61,7 @@ A typical generated object looks like:
 var APP_GLOBAL = {
   coreBaseUrl: "https://k7.example.com",
   userClientBaseUrl: "digitalniknihovna.cz/mzk",
-  deployPath: "https://admin.k7.example.com",
+  deployPath: "",
   keycloak: {
     loginType: "all"
   },

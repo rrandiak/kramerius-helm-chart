@@ -1,7 +1,7 @@
 var APP_GLOBAL = {
   coreBaseUrl: '{api host}/search',
   userClientBaseUrl: '{from values.yaml}',
-  deployPath: '{admin host}',
+  deployPath: '',
   keycloak: {
     loginType: 'all'
   },

@@ -3,7 +3,7 @@ name: kramerius
 description: Kramerius 7 - digital library system
 type: application
 icon: https://system-kramerius.cz/wp-content/uploads/2025/11/cropped-favicon-32x32.webp
-version: 1.1.0-rc1
+version: 1.1.0-rc2
 appVersion: "7.2.0"
 maintainers:
   - name: Randiak Robert
