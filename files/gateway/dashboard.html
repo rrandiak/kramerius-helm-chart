@@ -36,9 +36,80 @@
 
 <p>
   <form action="{{browser_root}}/ui/rule/add" method="post" class="inline-form">
-    <button type="submit" id="btn-add-rule"{{!' disabled' if open_index >= 0 else ''}}>+ Add rule</button>
+    <button type="submit" id="btn-add-rule"{{!' disabled' if open_index >= 0 or show_new_rule else ''}}>+ Add rule</button>
   </form>
 </p>
+
+% if show_new_rule:
+<div class="rule-stack">
+  <div id="new-rule" class="rule-edit edit-row" style="display:block">
+    <form method="post" action="{{browser_root}}/ui/rule/create">
+
+      <label>Rule name
+        <input type="text" name="rule_name" value="" required placeholder="my-rule"/>
+      </label>
+
+      % if endpoint_grouped:
+      <details>
+        <summary>Endpoints</summary>
+        % for section, paths in endpoint_grouped:
+        <p><strong>{{section}}</strong></p>
+        % for ep in paths:
+        <label><input type="checkbox" name="endpoints" value="{{ep}}"/> <code>{{ep}}</code></label><br/>
+        % end
+        % end
+      </details>
+      % end
+
+      % if state.users:
+      <details>
+        <summary>Users</summary>
+        % for u in state.users:
+        <label><input type="checkbox" name="user_refs" value="{{u.name}}"/> {{u.name}}</label><br/>
+        % end
+      </details>
+      % end
+
+      <fieldset>
+        <legend>Rate limit</legend>
+        <label>Window <input type="number" name="rl_window" value="60" min="1" required/> s</label>
+        <label>Peak max <input type="number" name="rl_peak" value="100" min="1" required/> req</label>
+        <label>Off max <input type="number" name="rl_off" value="100" min="1" required/> req</label>
+      </fieldset>
+
+      <fieldset>
+        <legend>Download limit</legend>
+        <label>Window <input type="number" name="dl_window" value="3600" min="1" required/> s</label>
+        <label>Peak max
+          <input type="number" class="dl-display" step="any" min="0" value="1" required/>
+          <select class="dl-unit">
+            <option value="1">B</option>
+            <option value="1024">KiB</option>
+            <option value="1048576">MiB</option>
+            <option value="1073741824" selected>GiB</option>
+          </select>
+          <input type="hidden" name="dl_peak" class="dl-bytes" value="1073741824"/>
+        </label>
+        <label>Off max
+          <input type="number" class="dl-display" step="any" min="0" value="1" required/>
+          <select class="dl-unit">
+            <option value="1">B</option>
+            <option value="1024">KiB</option>
+            <option value="1048576">MiB</option>
+            <option value="1073741824" selected>GiB</option>
+          </select>
+          <input type="hidden" name="dl_off" class="dl-bytes" value="1073741824"/>
+        </label>
+      </fieldset>
+
+      <div class="edit-actions">
+        <button type="submit">Create rule</button>
+        <a href="{{browser_root}}?tab=rules">Cancel</a>
+      </div>
+    </form>
+  </div>
+</div>
+% end
 
 % if state.rules:
 <div class="rules-list">

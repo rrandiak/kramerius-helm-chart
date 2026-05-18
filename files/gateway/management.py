@@ -329,6 +329,7 @@ def _ctx() -> dict:
     st = load_state()
     tab = request.query.get("tab", "rules")
     open_index = int(request.query.get("open", "-1") or -1)
+    show_new_rule = request.query.get("new") == "1"
     return dict(
         state=st,
         water_css=_WATER_CSS,
@@ -340,6 +341,7 @@ def _ctx() -> dict:
         flash_error=request.query.get("error", ""),
         flash_ok=request.query.get("ok", ""),
         open_index=open_index,
+        show_new_rule=show_new_rule,
         # Empty root avoids generating scheme-relative URLs like //ui/...
         # when templates concatenate "{{browser_root}}/ui/...".
         browser_root="",
@@ -452,10 +454,38 @@ def ui_user_remove():
 
 @app.post("/ui/rule/add")
 def ui_rule_add():
+    redirect("/?tab=rules&new=1")
+
+
+@app.post("/ui/rule/create")
+def ui_rule_create():
+    f = request.forms
     st = load_state()
-    st.rules.append(Rule(name=_next_name(st.rules, "new-rule")))
+    try:
+        rule = Rule(
+            name=(f.get("rule_name") or "").strip(),
+            endpoints=f.getall("endpoints"),
+            user_refs=[x for x in f.getall("user_refs") if x.strip()],
+            rl_window=int(f.get("rl_window") or 60),
+            rl_peak=int(f.get("rl_peak") or 100),
+            rl_off=int(f.get("rl_off") or 100),
+            dl_window=int(f.get("dl_window") or 3600),
+            dl_peak=int(f.get("dl_peak") or 1 << 30),
+            dl_off=int(f.get("dl_off") or 1 << 30),
+        )
+        if not rule.name:
+            raise ValueError("Name is required.")
+        if any(r.name == rule.name for r in st.rules):
+            raise ValueError(f"Name {rule.name!r} already in use.")
+        if _ENDPOINT_PATHS:
+            bad = [ep for ep in rule.endpoints if ep not in _ENDPOINT_PATHS]
+            if bad:
+                raise ValueError(f"Unknown endpoints: {bad}")
+    except ValueError as e:
+        return _home("rules", error=str(e))
+    st.rules.append(rule)
     save_state(st)
-    return _home("rules", ok="Rule added.", open_index=len(st.rules) - 1)
+    return _home("rules", ok="Rule created.")
 
 
 @app.post("/ui/rule/save")
