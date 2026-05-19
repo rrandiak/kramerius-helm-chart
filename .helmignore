@@ -1,3 +1,7 @@
+.git/
+.github/
+*.tgz
+docs/
 .run/
 dev/
 files/*/README.md
