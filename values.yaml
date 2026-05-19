@@ -272,10 +272,6 @@ krameriusPublic:
   catalinaOptsExtra: ""
   catalinaOptsOverride: ""
   customConfigs: []
-  service:
-    sessionAffinity:
-      type: ClientIP
-      clientIPTimeoutSeconds: 10800
   config:
     # Extra configuration.properties entries. Accepts a string (raw lines) or a list of {key, value} maps.
     configurationPropertiesExtra: ""
@@ -322,10 +318,6 @@ krameriusCurator:
   catalinaOptsExtra: ""
   catalinaOptsOverride: ""
   customConfigs: []
-  service:
-    sessionAffinity:
-      type: ClientIP
-      clientIPTimeoutSeconds: 10800
   config:
     # Extra configuration.properties entries. Accepts a string (raw lines) or a list of {key, value} maps.
     configurationPropertiesExtra: ""

@@ -1,4 +1,4 @@
-{{/* Kramerius Curator — ClusterIP Service (port 80 -> 8080) */}}
+{{/* Kramerius Curator — Headless Service (direct pod IP discovery); StatefulSet serviceName references this name */}}
 apiVersion: v1
 kind: Service
 metadata:
@@ -9,16 +9,10 @@ metadata:
     app.kubernetes.io/name: kramerius-curator
     app.kubernetes.io/component: kramerius-curator
 spec:
-  {{- $sa := .Values.krameriusCurator.service.sessionAffinity | default dict }}
-  sessionAffinity: {{ $sa.type | default "ClientIP" }}
-  {{- if eq ($sa.type | default "ClientIP") "ClientIP" }}
-  sessionAffinityConfig:
-    clientIP:
-      timeoutSeconds: {{ $sa.clientIPTimeoutSeconds | default 10800 }}
-  {{- end }}
+  clusterIP: None
   selector:
     {{- include "kramerius.curator.matchLabels" . | nindent 4 }}
   ports:
     - name: http
-      port: 80
+      port: 8080
       targetPort: 8080

@@ -3,7 +3,7 @@
 -- on_body_filter (429 body swap), build_429 (response body).
 
 local common      = require "gateway_common"
-local gw_config = require "gateway_config"
+local gw_config   = require "gateway_config"
 local RC          = require "ratelimit_config"
 
 local _M = {}
@@ -127,26 +127,22 @@ end
 -- ── phase handlers ────────────────────────────────────────────────────────────
 
 function _M.on_access()
-  -- internal sub-requests: just set upstream, skip rate limiting
-  if ngx.req.is_internal() then
-    local uri = ngx.var.request_uri or "/"
-    local cp  = ngx.var.curator_path_prefix or ""
-    ngx.var.kramerius_upstream = (#cp > 0 and uri:sub(1, #cp) == cp)
-      and ngx.var.backend_curator or ngx.var.backend_public
-    return
+  -- Set client IP and backend for the balancer (persists across internal redirects)
+  if not ngx.ctx.sticky_client_ip then
+    ngx.ctx.sticky_client_ip = common.client_ip()
   end
+  local uri = ngx.var.request_uri or "/"
+  local cp  = ngx.var.curator_path_prefix or ""
+  ngx.ctx.sticky_backend = (#cp > 0 and uri:sub(1, #cp) == cp)
+    and "curator" or "public"
+
+  -- internal sub-requests (e.g. cache named locations): skip rate limiting
+  if ngx.req.is_internal() then return end
 
   local cfg = gw_config.get()
-  if not cfg then
-    -- config not yet loaded — set upstream and fail open
-    local uri = ngx.var.request_uri or "/"
-    local cp  = ngx.var.curator_path_prefix or ""
-    ngx.var.kramerius_upstream = (#cp > 0 and uri:sub(1, #cp) == cp)
-      and ngx.var.backend_curator or ngx.var.backend_public
-    return
-  end
+  if not cfg then return end  -- config not yet loaded, fail open
 
-  local req_ip = common.client_ip()
+  local req_ip = ngx.ctx.sticky_client_ip
 
   -- 1. ban check
   if common.ip_in_cidrs(req_ip, cfg.bans) then
@@ -207,11 +203,7 @@ function _M.on_access()
     end
   end
 
-  -- 7. set upstream
-  local uri = ngx.var.request_uri or "/"
-  local cp  = ngx.var.curator_path_prefix or ""
-  ngx.var.kramerius_upstream = (#cp > 0 and uri:sub(1, #cp) == cp)
-    and ngx.var.backend_curator or ngx.var.backend_public
+  -- 7. upstream set by balancer_by_lua (no action needed here)
 
   local rc_mod = require "response_cache"
   rc_mod.on_access()

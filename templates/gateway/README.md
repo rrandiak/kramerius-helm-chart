@@ -197,7 +197,7 @@ Multiple attributes on one entry are combined with AND — the request must matc
 
 ### User Resolution
 
-When a user entry uses `username`, the gateway inspects `Authorization: Bearer <token>` and calls Kramerius at the fixed endpoint `http://kramerius-public/search/api/client/v7.0/user`. The `uid` field from the JSON response is used as the username. Resolved usernames are cached in-memory (Lua shared dict) for `cacheTtlSeconds` (default 5 minutes) and are not persisted across restarts.
+When a user entry uses `username`, the gateway inspects `Authorization: Bearer <token>` and calls Kramerius at the fixed endpoint `http://kramerius-public:8080/search/api/client/v7.0/user`. The `uid` field from the JSON response is used as the username. Resolved usernames are cached in-memory (Lua shared dict) for `cacheTtlSeconds` (default 5 minutes) and are not persisted across restarts.
 
 ```yaml
 gateway:
@@ -364,5 +364,5 @@ Memory is dominated by Lua shared dict allocations (`rateLimit` 32 MB + `downloa
 - All access control rules are managed via the management client and API — never through `helm upgrade`. Adding, changing, or removing a rule does not require a redeployment.
 - The `curatorPathPrefix` must match the path prefix known to the Kramerius Curator application. Changing it requires redeployment of both gateway and curator.
 - `keepaliveRequests: 10000` caps memory growth in long-lived Lua contexts on busy connections.
-- Username resolution uses the fixed internal URL `http://kramerius-public/search/api/client/v7.0/user`; the `uid` field from the JSON response is the resolved username.
+- Username resolution uses the fixed internal URL `http://kramerius-public:8080/search/api/client/v7.0/user`; the `uid` field from the JSON response is the resolved username.
 - Authentication for process-manager, gateway-management-client, and hyperdx is handled at the Ingress/Gateway API layer via annotations — not inside the gateway itself.

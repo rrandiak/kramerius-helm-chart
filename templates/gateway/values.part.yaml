@@ -53,6 +53,15 @@ gateway:
   # Include the current limit values in the 429 response body.
   error429IncludeLimits: true
 
+  # Session affinity — sticky routing to kramerius pods based on client IP.
+  # The gateway resolves headless service DNS to discover pod IPs, then uses
+  # consistent hashing on the real client IP (from X-Forwarded-For) to pin
+  # each client to a specific backend pod.
+  sessionAffinity:
+    enabled: true
+    # How often (seconds) to re-resolve pod IPs from headless service DNS.
+    refreshIntervalSeconds: 5
+
   # Upstream proxy timeouts for kramerius-public and kramerius-curator backends.
   proxy:
     connectTimeout: 10s
@@ -123,7 +132,7 @@ gateway:
 
   # Bearer token → username resolution via Kramerius.
   # Required when any rule's user entry uses the username attribute.
-  # URL is fixed: http://kramerius-public/search/api/client/v7.0/user
+  # URL is fixed: http://kramerius-public:8080/search/api/client/v7.0/user
   # The `uid` field from the JSON response is used as the resolved username.
   userResolution:
     enabled: false

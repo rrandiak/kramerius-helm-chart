@@ -6,6 +6,7 @@ local common = require "gateway_common"
 local RC     = require "ratelimit_config"
 local redis  = require "resty.redis"
 local cjson  = require "cjson.safe"
+local sticky = require "sticky_balancer"
 
 local _M = {}
 
@@ -116,6 +117,15 @@ end
 function _M.init()
   ngx.timer.at(0, poll)
   ngx.timer.every(RC.poll_secs, poll)
+
+  -- Load balancer: register backends and start DNS refresh.
+  -- Always active (required for headless services); session_affinity.enabled
+  -- controls whether selection uses sticky hashing or round-robin.
+  local sa = RC.session_affinity or {}
+  for _, b in ipairs(sa.backends or {}) do
+    sticky.add_backend(b.name, b.dns_name, b.port, b.fallback)
+  end
+  sticky.init(sa.enabled ~= false, sa.refresh_interval)
 end
 
 -- ── public API ────────────────────────────────────────────────────────────────

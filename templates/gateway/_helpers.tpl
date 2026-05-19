@@ -61,7 +61,16 @@ return {
   user_resolution = {
     enabled   = {{ $ur.enabled | default false }},
     cache_ttl = {{ $ur.cacheTtlSeconds | default 300 }},
-    url       = "http://kramerius-public.{{ .Values.namespace }}.svc.cluster.local/search/api/client/v7.0/user",
+    url       = "http://kramerius-public.{{ .Values.namespace }}.svc.cluster.local:8080/search/api/client/v7.0/user",
+  },
+  session_affinity = {
+    {{- $sa := .Values.gateway.sessionAffinity | default dict }}
+    enabled          = {{ $sa.enabled | default true }},
+    refresh_interval = {{ $sa.refreshIntervalSeconds | default 5 }},
+    backends = {
+      { name = "public",  dns_name = "kramerius-public.{{ .Values.namespace }}.svc.cluster.local",  port = 8080, fallback = "http://kramerius-public.{{ .Values.namespace }}.svc.cluster.local:8080" },
+      { name = "curator", dns_name = "kramerius-curator.{{ .Values.namespace }}.svc.cluster.local", port = 8080, fallback = "http://kramerius-curator.{{ .Values.namespace }}.svc.cluster.local:8080" },
+    },
   },
 }
 {{- end }}

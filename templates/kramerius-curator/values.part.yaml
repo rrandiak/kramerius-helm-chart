@@ -40,13 +40,6 @@ krameriusCurator:
   # Leave empty to use image default unless config.serverXml is set.
   serverXml: ""
 
-  service:
-    sessionAffinity:
-      # Kubernetes Service session affinity for backend stickiness.
-      # Use ClientIP to keep requests from the same source IP on one pod.
-      type: ClientIP
-      clientIPTimeoutSeconds: 10800
-
   config:
     # Freeform key=value lines appended verbatim to the generated
     # configuration.properties. Use for properties not yet exposed as

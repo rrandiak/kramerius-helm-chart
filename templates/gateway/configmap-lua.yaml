@@ -27,4 +27,6 @@ data:
 {{ .Files.Get "files/gateway/response_cache.lua" | nindent 4 }}
   cache_memory_body.lua: |
 {{ .Files.Get "files/gateway/cache_memory_body.lua" | nindent 4 }}
+  sticky_balancer.lua: |
+{{ .Files.Get "files/gateway/sticky_balancer.lua" | nindent 4 }}
 
