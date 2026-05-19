@@ -3,9 +3,9 @@ entries:
   kramerius:
   - apiVersion: v2
     appVersion: 7.2.0
-    created: "2026-05-19T15:28:42.494825404Z"
+    created: "2026-05-19T16:02:10.788057873Z"
     description: Kramerius 7 - digital library system
-    digest: c8934ef46f0573fa2e37539ae7788b868067ed0a65ba0ca71883bf3356a99f72
+    digest: b151edadb793576a4692969653624c8364737eeb4430c312c156d01a60c478ff
     icon: https://system-kramerius.cz/wp-content/uploads/2025/11/cropped-favicon-32x32.webp
     maintainers:
     - email: robert.randiak@mzk.cz
@@ -17,49 +17,7 @@ entries:
     version: 1.1.0-rc4
   - apiVersion: v2
     appVersion: 7.2.0
-    created: "2026-05-19T15:28:42.488784358Z"
-    description: Kramerius 7 - digital library system
-    digest: 9da12b82055cd547bbf99320b50403e116c3bfef361e8a31c22c6df1833f31cf
-    icon: https://system-kramerius.cz/wp-content/uploads/2025/11/cropped-favicon-32x32.webp
-    maintainers:
-    - email: robert.randiak@mzk.cz
-      name: Randiak Robert
-    name: kramerius
-    type: application
-    urls:
-    - https://rrandiak.github.io/kramerius-helm-chart/kramerius-1.1.0-rc3.tgz
-    version: 1.1.0-rc3
-  - apiVersion: v2
-    appVersion: 7.2.0
-    created: "2026-05-19T15:28:42.376091734Z"
-    description: Kramerius 7 - digital library system
-    digest: 9ec09280808a8b2243f4b58f232a30f01db289b5e7001eed4fd5bac658e7f948
-    icon: https://system-kramerius.cz/wp-content/uploads/2025/11/cropped-favicon-32x32.webp
-    maintainers:
-    - email: robert.randiak@mzk.cz
-      name: Randiak Robert
-    name: kramerius
-    type: application
-    urls:
-    - https://rrandiak.github.io/kramerius-helm-chart/kramerius-1.1.0-rc2.tgz
-    version: 1.1.0-rc2
-  - apiVersion: v2
-    appVersion: 7.2.0
-    created: "2026-05-19T15:28:42.328633042Z"
-    description: Kramerius 7 - digital library system
-    digest: e6cbd428c7a254bd5adf127b4f33080ecdd5a83b56ed5c5325691964253367e7
-    icon: https://system-kramerius.cz/wp-content/uploads/2025/11/cropped-favicon-32x32.webp
-    maintainers:
-    - email: robert.randiak@mzk.cz
-      name: Randiak Robert
-    name: kramerius
-    type: application
-    urls:
-    - https://rrandiak.github.io/kramerius-helm-chart/kramerius-1.1.0-rc1.tgz
-    version: 1.1.0-rc1
-  - apiVersion: v2
-    appVersion: 7.2.0
-    created: "2026-05-19T15:28:42.303266414Z"
+    created: "2026-05-19T16:02:10.782258252Z"
     description: Kramerius 7 - digital library system
     digest: bb267854d28f3ed465a1d2f90cd7ae6651893b52355231b578164f987f683b6c
     maintainers:
@@ -70,95 +28,4 @@ entries:
     urls:
     - https://rrandiak.github.io/kramerius-helm-chart/kramerius-1.0.9.tgz
     version: 1.0.9
-  - apiVersion: v2
-    appVersion: 7.2.0
-    created: "2026-05-19T15:28:42.300620767Z"
-    description: Kramerius 7 - digital library system
-    digest: 2e9bef7430ab2288c49d38e07c9d19fb7ddb9c98ab0877b4c1fd02969b76ce90
-    maintainers:
-    - email: robert.randiak@mzk.cz
-      name: Randiak Robert
-    name: kramerius
-    type: application
-    urls:
-    - https://rrandiak.github.io/kramerius-helm-chart/kramerius-1.0.8.tgz
-    version: 1.0.8
-  - apiVersion: v2
-    appVersion: 7.2.0
-    created: "2026-05-19T15:28:42.297323045Z"
-    description: Kramerius 7 - digital library system
-    digest: a9d4abf89e5c53a9956617fa4916e550320c5fb21ae4138c8ef613ce1c4c4eb6
-    maintainers:
-    - email: robert.randiak@mzk.cz
-      name: Randiak Robert
-    name: kramerius
-    type: application
-    urls:
-    - https://rrandiak.github.io/kramerius-helm-chart/kramerius-1.0.7.tgz
-    version: 1.0.7
-  - apiVersion: v2
-    appVersion: 7.2.0
-    created: "2026-05-19T15:28:42.294626853Z"
-    description: Kramerius 7 - digital library system
-    digest: 393ddda58853a991a9213000116ddfb1c6d6e5144316fbb05d29c660b5bbbf14
-    maintainers:
-    - email: robert.randiak@mzk.cz
-      name: Randiak Robert
-    name: kramerius
-    type: application
-    urls:
-    - https://rrandiak.github.io/kramerius-helm-chart/kramerius-1.0.6.tgz
-    version: 1.0.6
-  - apiVersion: v2
-    appVersion: 7.2.0
-    created: "2026-05-19T15:28:42.291909257Z"
-    description: Kramerius 7 - digital library system
-    digest: a203495584514b99150d5803759ea40b186a1f443f286fa8421b491fa95de4cc
-    maintainers:
-    - email: robert.randiak@mzk.cz
-      name: Randiak Robert
-    name: kramerius
-    type: application
-    urls:
-    - https://rrandiak.github.io/kramerius-helm-chart/kramerius-1.0.5.tgz
-    version: 1.0.5
-  - apiVersion: v2
-    appVersion: 7.2.0
-    created: "2026-05-19T15:28:42.28870718Z"
-    description: Kramerius 7 - digital library system
-    digest: 1405018ca0720ba1aa1a321339d7ebe8758679eaa6e99bb1354e96847e1e0b41
-    maintainers:
-    - email: robert.randiak@mzk.cz
-      name: Randiak Robert
-    name: kramerius
-    type: application
-    urls:
-    - https://rrandiak.github.io/kramerius-helm-chart/kramerius-1.0.4.tgz
-    version: 1.0.4
-  - apiVersion: v2
-    appVersion: 7.2.0
-    created: "2026-05-19T15:28:42.28606541Z"
-    description: Kramerius 7 - digital library system
-    digest: 9ec436578b6ac902b7a9351f32a21ee377923ada85746233eac7114c4d4d3c71
-    maintainers:
-    - email: robert.randiak@mzk.cz
-      name: Randiak Robert
-    name: kramerius
-    type: application
-    urls:
-    - https://rrandiak.github.io/kramerius-helm-chart/kramerius-1.0.3.tgz
-    version: 1.0.3
-  - apiVersion: v2
-    appVersion: 7.2.0
-    created: "2026-05-19T15:28:42.28321935Z"
-    description: Kramerius 7 - digital library system
-    digest: 02895a5846fd07651d522acee622c1395baa3d6189e9a2d39242006a9060c4c4
-    maintainers:
-    - email: robert.randiak@mzk.cz
-      name: Randiak Robert
-    name: kramerius
-    type: application
-    urls:
-    - https://rrandiak.github.io/kramerius-helm-chart/kramerius-1.0.2.tgz
-    version: 1.0.2
-generated: "2026-05-19T15:28:42.279694196Z"
+generated: "2026-05-19T16:02:10.77930473Z"
