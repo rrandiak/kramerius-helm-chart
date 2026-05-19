@@ -117,8 +117,22 @@
   <div class="rule-stack">
     <article class="rule-card">
       <header class="rule-card-header">
-        <h3 class="rule-card-title">{{rule.name}}</h3>
-        <a href="#" class="rule-card-edit" onclick="openEdit('rule-{{i}}');return false">Edit</a>
+        <h3 class="rule-card-title"><span class="rule-index muted">#{{i+1}}</span> {{rule.name}}</h3>
+        <span class="rule-card-actions">
+          % if i > 0:
+          <form method="post" action="{{browser_root}}/ui/rule/move" class="inline-form">
+            <input type="hidden" name="index" value="{{i}}"/><input type="hidden" name="direction" value="up"/>
+            <button type="submit" class="link-btn" title="Move up">&uarr;</button>
+          </form>
+          % end
+          % if i < len(state.rules) - 1:
+          <form method="post" action="{{browser_root}}/ui/rule/move" class="inline-form">
+            <input type="hidden" name="index" value="{{i}}"/><input type="hidden" name="direction" value="down"/>
+            <button type="submit" class="link-btn" title="Move down">&darr;</button>
+          </form>
+          % end
+          <a href="#" class="rule-card-edit" onclick="openEdit('rule-{{i}}');return false">Edit</a>
+        </span>
       </header>
       <section class="rule-card-section">
         <h4 class="rule-card-label">Endpoints</h4>

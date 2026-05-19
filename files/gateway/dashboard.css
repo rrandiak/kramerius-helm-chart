@@ -70,7 +70,9 @@ td, th { padding: .4rem .6rem; vertical-align: top; border-bottom: 1px solid var
   border-bottom: 1px solid var(--background-alt);
 }
 .rule-card-title   { margin: 0; font-size: 1.15rem; font-weight: 600; line-height: 1.3; }
+.rule-card-actions  { display: flex; align-items: baseline; gap: 0.35rem; }
 .rule-card-edit    { margin-bottom: 0; white-space: nowrap; }
+.rule-index        { font-weight: 400; font-size: 0.85em; margin-right: 0.3rem; }
 .rule-card-section { margin-bottom: 0.85rem; }
 .rule-card-section:last-child { margin-bottom: 0; }
 

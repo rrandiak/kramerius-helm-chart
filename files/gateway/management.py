@@ -527,6 +527,19 @@ def ui_rule_remove():
     return _home("rules")
 
 
+@app.post("/ui/rule/move")
+def ui_rule_move():
+    st = load_state()
+    idx = _get_idx(request.forms, "rules", len(st.rules))
+    direction = request.forms.get("direction")
+    if direction == "up" and idx > 0:
+        st.rules[idx], st.rules[idx - 1] = st.rules[idx - 1], st.rules[idx]
+    elif direction == "down" and idx < len(st.rules) - 1:
+        st.rules[idx], st.rules[idx + 1] = st.rules[idx + 1], st.rules[idx]
+    save_state(st)
+    return _home("rules")
+
+
 # ── Bans UI ──────────────────────────────────────────────────────────────────
 
 
@@ -557,7 +570,13 @@ def ui_bans_delete():
     except ValueError as e:
         return _home("bans", error=str(e))
     st = load_state()
+    removed = [b for b in st.bans if b.target == canon]
     st.bans = [b for b in st.bans if b.target != canon]
+    for b in removed:
+        st.removed_bans.append(RemovedBan(
+            target=b.target, reason=b.reason, banned_at=b.banned_at,
+            removed_at=datetime.now(timezone.utc).isoformat(),
+        ))
     save_state(st)
     return _home("bans", ok="Ban removed.")
 
@@ -644,10 +663,15 @@ def slack_commands():
             target = _cidr(parts[1])
         except ValueError:
             return ok(f"Invalid: `{parts[1]}`", ephemeral=True)
-        before = len(st.bans)
-        st.bans = [b for b in st.bans if b.target != target]
-        if len(st.bans) == before:
+        removed = [b for b in st.bans if b.target == target]
+        if not removed:
             return ok(f"No ban for `{target}`", ephemeral=True)
+        st.bans = [b for b in st.bans if b.target != target]
+        for b in removed:
+            st.removed_bans.append(RemovedBan(
+                target=b.target, reason=b.reason, banned_at=b.banned_at,
+                removed_at=datetime.now(timezone.utc).isoformat(),
+            ))
         save_state(st)
         return ok(f"Unbanned `{target}`")
     if sub == "ban" and len(parts) >= 2:
