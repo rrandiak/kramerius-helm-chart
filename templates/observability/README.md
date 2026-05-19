@@ -183,9 +183,10 @@ observability:
       latencyThresholdMs: 1000
       probabilisticPercentage: 10
 
-    # Enable per component. Service names are set automatically:
+    # Enable per component. Resource attributes are set automatically:
     #   otel.service.name  = component identifier (e.g. "kramerius-public")
     #   otel.service.instance.id = pod name (e.g. "kramerius-public-0")
+    #   host.name = pod name (e.g. "kramerius-public-0")
 
     krameriusPublic:
       enabled: true
@@ -216,6 +217,7 @@ Each enabled component is identified in traces by two resource attributes:
 |---|---|---|
 | `service.name` | Fixed component label | `kramerius-public`, `worker-curator` |
 | `service.instance.id` | Pod name (ordinal suffix) | `kramerius-public-0`, `worker-curator-1` |
+| `host.name` | Pod name (ordinal suffix) | `kramerius-public-0`, `worker-curator-1` |
 
 These are set via `-Dotel.*` JVM flags injected into `CATALINA_OPTS` (or
 `JAVA_OPTS` for process-manager) by the chart — no manual configuration is
@@ -259,6 +261,19 @@ WHERE finish_date >= today()
 GROUP BY service_name
 ORDER BY error_pct DESC;
 ```
+
+## ClickHouse Maintenance
+
+### Check total disk usage
+
+```sql
+SELECT
+    formatReadableSize(sum(bytes_on_disk)) AS total_size
+FROM system.parts
+WHERE active;
+```
+
+Returns the total on-disk size of all active ClickHouse parts (across all tables).
 
 ## Resource Requests / Limits
 

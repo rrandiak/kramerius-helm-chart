@@ -69,7 +69,11 @@ var APP_GLOBAL = {
     { "type": "processes" },
     { "type": "indexing", "subtype": "object" }
   ],
-  devMode: false
+  altoeditor: [
+    { "name": "ALTO editor", "domain": "https://altoeditor.example.com" }
+  ],
+  devMode: false,
+  myCustomKey: "injected-via-extraGlobals"
 };
 ```
 
@@ -115,6 +119,8 @@ or for HA during rolling upgrades.
 | `adminClient.config.keycloakLoginType` | `all` | Login flow mode consumed by SPA keycloak config |
 | `adminClient.config.devMode` | `false` | Enables SPA development behavior toggles |
 | `adminClient.config.homeDashboard` | list of dashboard entries | Default dashboard composition (card `type`/`subtype`, optional `hidden`) |
+| `adminClient.config.altoeditor` | `[]` | ALTO editor instances (list of objects with `name` and `domain`) |
+| `adminClient.config.extraGlobals` | `{}` | Arbitrary key-value pairs injected into `APP_GLOBAL` (values are serialized as JSON) |
 
 ## Resource Requests / Limits
 

@@ -30,7 +30,11 @@ var APP_GLOBAL = {
     loginType: {{ $cfg.keycloakLoginType | default "all" | squote }}
   },
   homeDashboard: {{ $cfg.homeDashboard | default list | toJson }},
+  altoeditor: {{ $cfg.altoeditor | default list | toJson }},
   devMode: {{ $cfg.devMode | default false }}
+{{- range $key, $val := ($cfg.extraGlobals | default dict) }},
+  {{ $key }}: {{ $val | toJson }}
+{{- end }}
 };
 {{- end }}
 

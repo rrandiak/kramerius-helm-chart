@@ -29,3 +29,7 @@ adminClient:
       - type: "monitoring"
         subtype: "api"
         hidden: true
+    altoeditor:
+      - name: "ALTO editor"
+        domain: "https://altoeditor.example.com"
+    extraGlobals: {}

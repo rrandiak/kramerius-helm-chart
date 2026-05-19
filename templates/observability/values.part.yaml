@@ -123,9 +123,9 @@ observability:
   #   2. otel.collector.enabled=true — the collector is required; there is no
   #      direct path from JVM agents to ClickHouse.
   #
-  # Service naming: each workload gets otel.service.name=<component> and
-  # otel.service.instance.id=<pod-name> (resolved at runtime via Kubernetes
-  # env-var substitution of $(POD_NAME)).
+  # Service naming: each workload gets otel.service.name=<component>,
+  # otel.service.instance.id=<pod-name>, and host.name=<pod-name>
+  # (resolved at runtime via Kubernetes env-var substitution of $(POD_NAME)).
   otel:
     # Filename of the OTEL javaagent JAR inside the javaagents PVC.
     # This jar is mounted as a separate file alongside any other javaagents.

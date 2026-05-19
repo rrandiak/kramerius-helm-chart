@@ -200,6 +200,8 @@ adminClient:
     keycloakLoginType: "all"
     devMode: false
     homeDashboard: []
+    altoeditor: []
+    extraGlobals: {}
   resources:
     requests:
       cpu: "10m"

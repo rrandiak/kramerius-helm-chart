@@ -180,7 +180,7 @@ exporters:
     endpoint: tcp://{{ printf "%s.%s.svc.cluster.local:9000" (include "kramerius.observability.clickhouseName" $root) $root.Values.namespace }}
     database: default
     traces_table_name: otel_traces
-    ttl: {{ default 90 $ch.retentionDays }}
+    ttl: {{ mul (default 90 $ch.retentionDays) 24 }}h
     create_schema: true
     username: {{ $ch.user | default "default" | quote }}
     password: {{ $ch.password | default "" | quote }}
@@ -253,6 +253,7 @@ service:
 {{- if $serviceName }}
 {{- $opts = append $opts (printf "-Dotel.service.name=%s" $serviceName) }}
 {{- $opts = append $opts "-Dotel.service.instance.id=$(POD_NAME)" }}
+{{- $opts = append $opts "-Dotel.resource.attributes=host.name=$(POD_NAME)" }}
 {{- end }}
 {{- $endpoint := include "kramerius.observability.otelExporterEndpoint" $root }}
 {{- $opts = append $opts (printf "-Dotel.exporter.otlp.endpoint=%s" $endpoint) }}

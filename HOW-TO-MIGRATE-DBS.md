@@ -107,7 +107,16 @@ Folders and related data use **stable text/UUID keys**. **Logical replication** 
 
 Create an empty `users` database (or schema) on the target and apply the same structure as the source (`pg_dump -s` or equivalent). Match PostgreSQL major version when replication compatibility requires it.
 
-### 2.2 Publication on source (`users`)
+### 2.2 Prepare replication role on source
+
+Grant the **`REPLICATION`** privilege to the role used by subscriptions:
+
+```sql
+-- On SOURCE
+ALTER ROLE replicator WITH REPLICATION;
+```
+
+### 2.3 Publication on source (`users`)
 
 ```sql
 -- On SOURCE users DB
@@ -119,17 +128,17 @@ CREATE PUBLICATION users_pub FOR TABLE
 
 Add any other tables your deployment keeps in this database using the same **`FOR TABLE`** pattern.
 
-### 2.3 Subscription on target (`users`)
+### 2.4 Subscription on target (`users`)
 
 ```sql
 -- On TARGET users DB
 CREATE SUBSCRIPTION users_sub
-CONNECTION 'host=... port=5432 dbname=users user=replicator password=...'
+CONNECTION 'host={db-name}-rw.{namespace}.svc.cluster.local port=5432 dbname=users user=replicator password=...'
 PUBLICATION users_pub
 WITH (copy_data = true, create_slot = true);
 ```
 
-Use a dedicated **`REPLICATION`** / **`LOGIN`** user on the source. Monitor **`pg_stat_subscription`**. Ensure network reachability and **TLS** where appropriate. After cutover, disable or drop the subscription per your runbook.
+Replace **`{db-name}`** and **`{namespace}`** with the CNPG cluster name and Kubernetes namespace of the **source**. Use a dedicated **`REPLICATION`** / **`LOGIN`** user on the source. Monitor **`pg_stat_subscription`**. Ensure network reachability and **TLS** where appropriate.
 
 ---
 
@@ -166,9 +175,37 @@ CREATE PUBLICATION process_pub FOR TABLE
 ```sql
 -- On TARGET process DB
 CREATE SUBSCRIPTION process_sub
-CONNECTION 'host=... port=5432 dbname=process user=replicator password=...'
+CONNECTION 'host={db-name}-rw.{namespace}.svc.cluster.local port=5432 dbname=process user=replicator password=...'
 PUBLICATION process_pub
 WITH (copy_data = true, create_slot = true);
 ```
 
-Use a dedicated **`REPLICATION`** / **`LOGIN`** user on the source. Monitor **`pg_stat_subscription`**. Ensure network reachability and **TLS** where appropriate. After cutover, disable or drop the subscription per your runbook.
+Replace **`{db-name}`** and **`{namespace}`** with the CNPG cluster name and Kubernetes namespace of the **source**. Use a dedicated **`REPLICATION`** / **`LOGIN`** user on the source. Monitor **`pg_stat_subscription`**. Ensure network reachability and **TLS** where appropriate.
+
+---
+
+## 4. Monitoring and cleanup
+
+### 4.1 Check replication state
+
+```sql
+-- On TARGET: list active subscriptions
+SELECT * FROM pg_subscription;
+
+-- On SOURCE: list active publications
+SELECT * FROM pg_publication;
+```
+
+### 4.2 Drop replication after cutover
+
+Once the migration is complete and production URLs point to **new**, remove the replication objects:
+
+```sql
+-- On TARGET: drop subscriptions
+DROP SUBSCRIPTION users_sub;
+DROP SUBSCRIPTION process_sub;
+
+-- On SOURCE: drop publications
+DROP PUBLICATION users_pub;
+DROP PUBLICATION process_pub;
+```
