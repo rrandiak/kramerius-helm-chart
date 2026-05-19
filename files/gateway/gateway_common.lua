@@ -1,4 +1,12 @@
+local cjson = require "cjson.safe"
+
 local _M = {}
+
+-- cjson decodes JSON null as cjson.null (truthy lightuserdata), not nil.
+-- Use this to check whether a JSON field was actually set to a real value.
+local function is_set(v)
+  return v ~= nil and v ~= cjson.null
+end
 
 function _M.client_ip()
   return ngx.var.remote_addr or "unknown"
@@ -118,13 +126,13 @@ end
 
 local function profile_matches(p, req_ip, req_username)
   -- degenerate profile with no identifiers matches nothing
-  if not p.ip and not p.username and not next(p.headers or {}) then
+  if not is_set(p.ip) and not is_set(p.username) and not next(p.headers or {}) then
     return false
   end
-  if p.ip and not _M.ip_in_cidrs(req_ip, { p.ip }) then
+  if is_set(p.ip) and not _M.ip_in_cidrs(req_ip, { p.ip }) then
     return false
   end
-  if p.username and p.username ~= req_username then
+  if is_set(p.username) and p.username ~= req_username then
     return false
   end
   for k, v in pairs(p.headers or {}) do

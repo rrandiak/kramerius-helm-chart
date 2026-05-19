@@ -131,6 +131,11 @@
             <button type="submit" class="link-btn" title="Move down">&darr;</button>
           </form>
           % end
+          <form method="post" action="{{browser_root}}/ui/rule/move-to" class="inline-form move-to-form">
+            <input type="hidden" name="index" value="{{i}}"/>
+            <input type="number" name="target" min="1" max="{{len(state.rules)}}" value="{{i+1}}" class="move-to-input" title="Move to position #"/>
+            <button type="submit" class="link-btn" title="Move to position">&rArr;</button>
+          </form>
           <a href="#" class="rule-card-edit" onclick="openEdit('rule-{{i}}');return false">Edit</a>
         </span>
       </header>

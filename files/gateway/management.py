@@ -97,7 +97,9 @@ class User:
     headers: dict[str, str] = dataclasses.field(default_factory=dict)
 
     def to_dict(self) -> dict:
-        return dataclasses.asdict(self)
+        d = dataclasses.asdict(self)
+        # Drop None values so Lua cjson doesn't see null (truthy lightuserdata)
+        return {k: v for k, v in d.items() if v is not None}
 
     @staticmethod
     def from_dict(d: dict) -> "User":
@@ -537,6 +539,22 @@ def ui_rule_move():
     elif direction == "down" and idx < len(st.rules) - 1:
         st.rules[idx], st.rules[idx + 1] = st.rules[idx + 1], st.rules[idx]
     save_state(st)
+    return _home("rules")
+
+
+@app.post("/ui/rule/move-to")
+def ui_rule_move_to():
+    st = load_state()
+    idx = _get_idx(request.forms, "rules", len(st.rules))
+    try:
+        target = int(request.forms.get("target") or "") - 1  # 1-based input
+    except ValueError:
+        return _home("rules", error="Invalid target position.")
+    target = max(0, min(target, len(st.rules) - 1))
+    if target != idx:
+        rule = st.rules.pop(idx)
+        st.rules.insert(target, rule)
+        save_state(st)
     return _home("rules")
 
 
