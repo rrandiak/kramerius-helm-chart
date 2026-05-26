@@ -70,7 +70,12 @@ spec:
         - name: vector
           image: {{ (default "timberio/vector" ($v.image | default dict).repository) }}:{{ (default "0.43.0-alpine" ($v.image | default dict).tag) }}
           imagePullPolicy: {{ default "IfNotPresent" (($v.image | default dict).pullPolicy) }}
-          args: ["--config", "/etc/vector/vector.yaml"]
+          command:
+            - /bin/sh
+            - -c
+            - |
+              find /var/lib/vector -name '*.lock' -delete 2>/dev/null || true
+              exec vector --config /etc/vector/vector.yaml
           volumeMounts:
             - name: vector-config
               mountPath: /etc/vector
