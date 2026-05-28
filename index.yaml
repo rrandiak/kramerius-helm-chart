@@ -3,7 +3,21 @@ entries:
   kramerius:
   - apiVersion: v2
     appVersion: 7.2.0
-    created: "2026-05-26T13:17:52.723393515Z"
+    created: "2026-05-28T16:34:28.393635677Z"
+    description: Kramerius 7 - digital library system
+    digest: 7dcccc30e5b8f575de211f5eba595c77d7573ebb4fde777c8490435bc99c823e
+    icon: https://system-kramerius.cz/wp-content/uploads/2025/11/cropped-favicon-32x32.webp
+    maintainers:
+    - email: robert.randiak@mzk.cz
+      name: Randiak Robert
+    name: kramerius
+    type: application
+    urls:
+    - https://rrandiak.github.io/kramerius-helm-chart/kramerius-1.1.1.tgz
+    version: 1.1.1
+  - apiVersion: v2
+    appVersion: 7.2.0
+    created: "2026-05-28T16:34:28.386832058Z"
     description: Kramerius 7 - digital library system
     digest: 0dfaf9f9913dbc44cc478b69a10107ea57b075a035d998a29e6387f74f5ec39b
     icon: https://system-kramerius.cz/wp-content/uploads/2025/11/cropped-favicon-32x32.webp
@@ -17,7 +31,7 @@ entries:
     version: 1.1.0
   - apiVersion: v2
     appVersion: 7.2.0
-    created: "2026-05-26T13:17:52.717081601Z"
+    created: "2026-05-28T16:34:28.38103644Z"
     description: Kramerius 7 - digital library system
     digest: a0fbe681fd9eb93fa7460e487d118d8c09d83e57770ba0be057e2c247a7d6e2e
     icon: https://system-kramerius.cz/wp-content/uploads/2025/11/cropped-favicon-32x32.webp
@@ -31,7 +45,7 @@ entries:
     version: 1.1.0-rc5
   - apiVersion: v2
     appVersion: 7.2.0
-    created: "2026-05-26T13:17:52.711623276Z"
+    created: "2026-05-28T16:34:28.374964959Z"
     description: Kramerius 7 - digital library system
     digest: b151edadb793576a4692969653624c8364737eeb4430c312c156d01a60c478ff
     icon: https://system-kramerius.cz/wp-content/uploads/2025/11/cropped-favicon-32x32.webp
@@ -45,7 +59,7 @@ entries:
     version: 1.1.0-rc4
   - apiVersion: v2
     appVersion: 7.2.0
-    created: "2026-05-26T13:17:52.705355838Z"
+    created: "2026-05-28T16:34:28.368746579Z"
     description: Kramerius 7 - digital library system
     digest: bb267854d28f3ed465a1d2f90cd7ae6651893b52355231b578164f987f683b6c
     maintainers:
@@ -56,4 +70,4 @@ entries:
     urls:
     - https://rrandiak.github.io/kramerius-helm-chart/kramerius-1.0.9.tgz
     version: 1.0.9
-generated: "2026-05-26T13:17:52.702537103Z"
+generated: "2026-05-28T16:34:28.365855966Z"
