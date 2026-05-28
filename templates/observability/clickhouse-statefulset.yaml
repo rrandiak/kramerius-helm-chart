@@ -49,6 +49,10 @@ spec:
               mountPath: /etc/clickhouse-server/config.d/listen.xml
               subPath: listen.xml
               readOnly: true
+            - name: clickhouse-net-config
+              mountPath: /etc/clickhouse-server/config.d/logger.xml
+              subPath: logger.xml
+              readOnly: true
           resources:
             {{- toYaml ($c.resources | default dict) | nindent 12 }}
       volumes:

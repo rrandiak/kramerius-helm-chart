@@ -14,4 +14,10 @@ data:
       <listen_host>0.0.0.0</listen_host>
       <listen_host>::</listen_host>
     </clickhouse>
+  logger.xml: |
+    <clickhouse>
+      <logger>
+        <console>true</console>
+      </logger>
+    </clickhouse>
 {{- end }}
