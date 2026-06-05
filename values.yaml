@@ -870,6 +870,8 @@ observability:
     storage:
       storageClass: ""
       size: 256Gi
+    # Enable console (debug) logging in ClickHouse
+    debug: false
     retentionDays: 90
     resources:
       requests:

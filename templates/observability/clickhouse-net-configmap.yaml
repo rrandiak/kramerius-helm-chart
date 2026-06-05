@@ -17,7 +17,7 @@ data:
   logger.xml: |
     <clickhouse>
       <logger>
-        <console>true</console>
+        <console>{{ .Values.observability.clickhouse.debug | default false }}</console>
       </logger>
     </clickhouse>
 {{- end }}
