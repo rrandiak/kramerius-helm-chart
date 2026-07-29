@@ -97,7 +97,14 @@ spec:
           resources:
             {{- toYaml $mc.resources | nindent 12 }}
       volumes:
+        # App files and vendored sources are separate ConfigMaps (see
+        # configmap-management-client-vendor.yaml) and projected back into a
+        # single flat /app.
         - name: app
-          configMap:
-            name: gateway-management-client-app
+          projected:
+            sources:
+              - configMap:
+                  name: gateway-management-client-app
+              - configMap:
+                  name: gateway-management-client-vendor
 {{- end }}

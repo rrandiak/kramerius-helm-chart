@@ -16,8 +16,6 @@ data:
 {{ .Files.Get "files/gateway/dashboard.css" | nindent 4 }}
   endpoints.txt: |-
 {{ .Files.Get "files/gateway/endpoints.txt" | nindent 4 }}
-  bottle.py: |-
-{{ .Files.Get "files/gateway/bottle.py" | nindent 4 }}
   water.css: |-
 {{ .Files.Get "files/gateway/water.css" | nindent 4 }}
 {{- end }}

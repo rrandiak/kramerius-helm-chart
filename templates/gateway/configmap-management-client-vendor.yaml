@@ -1,0 +1,19 @@
+{{- if .Values.gateway.managementClient.enabled }}
+{{- /*
+  Vendored third-party sources live in their own ConfigMap: bottle.py alone is
+  ~176 KB, and together with the app files it pushed the client-side apply
+  annotation (kubectl.kubernetes.io/last-applied-configuration) over its
+  262144-byte ceiling. This file never changes, the app files do.
+*/}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gateway-management-client-vendor
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "kramerius.labels" . | nindent 4 }}
+    {{- include "kramerius.gateway.management.matchLabels" . | nindent 4 }}
+data:
+  bottle.py: |-
+{{ .Files.Get "files/gateway/bottle.py" | nindent 4 }}
+{{- end }}
