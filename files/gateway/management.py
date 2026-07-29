@@ -451,6 +451,39 @@ def ui_user_remove():
     return _home("users")
 
 
+# Profile order is match order: the gateway credits a request to the first
+# profile whose conditions all match (see match_profile in gateway_common.lua),
+# so narrower profiles must sit above broader ones. Rules reference profiles by
+# name, so reordering never invalidates user_refs.
+@app.post("/ui/user/move")
+def ui_user_move():
+    st = load_state()
+    idx = _get_idx(request.forms, "users", len(st.users))
+    direction = request.forms.get("direction")
+    if direction == "up" and idx > 0:
+        st.users[idx], st.users[idx - 1] = st.users[idx - 1], st.users[idx]
+    elif direction == "down" and idx < len(st.users) - 1:
+        st.users[idx], st.users[idx + 1] = st.users[idx + 1], st.users[idx]
+    save_state(st)
+    return _home("users")
+
+
+@app.post("/ui/user/move-to")
+def ui_user_move_to():
+    st = load_state()
+    idx = _get_idx(request.forms, "users", len(st.users))
+    try:
+        target = int(request.forms.get("target") or "") - 1  # 1-based input
+    except ValueError:
+        return _home("users", error="Invalid target position.")
+    target = max(0, min(target, len(st.users) - 1))
+    if target != idx:
+        user = st.users.pop(idx)
+        st.users.insert(target, user)
+        save_state(st)
+    return _home("users")
+
+
 # ── Rules ────────────────────────────────────────────────────────────────────
 
 

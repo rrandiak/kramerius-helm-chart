@@ -119,6 +119,7 @@ details > label { display: block; }
 .remove-form { display: none; }
 .link-btn { all: unset; color: var(--links); cursor: pointer; }
 .link-btn:hover { text-decoration: underline; }
+.user-row-actions { display: inline-flex; align-items: baseline; gap: 0.35rem; white-space: nowrap; }
 .move-to-form { display: inline-flex !important; align-items: baseline; gap: 0.2rem; }
 .move-to-input { width: 3.2rem; padding: 0.1rem 0.25rem; font-size: 0.85em; text-align: center; border: 1px solid var(--border); border-radius: 3px; background: var(--background-alt); color: inherit; }
 

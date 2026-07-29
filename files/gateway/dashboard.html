@@ -277,15 +277,22 @@
   </form>
 </p>
 
+<p class="muted">
+  Order is match order — a request is credited to the <strong>first</strong> profile whose
+  conditions all match. Put narrow profiles (extra header or username) above broad ones,
+  or the broad profile will swallow them.
+</p>
+
 % if state.users:
 <div class="table-wrap">
 <table>
   <thead>
-    <tr><th>Name</th><th>IP / CIDR</th><th>Username</th><th>HTTP headers</th><th></th></tr>
+    <tr><th>#</th><th>Name</th><th>IP / CIDR</th><th>Username</th><th>HTTP headers</th><th></th></tr>
   </thead>
   <tbody>
   % for i, user in enumerate(state.users):
     <tr>
+      <td><span class="rule-index muted">{{i+1}}</span></td>
       <td><strong class="nowrap">{{user.name}}</strong></td>
       <td><code>{{user.ip or '—'}}</code></td>
       <td class="nowrap">{{user.username or '—'}}</td>
@@ -297,10 +304,31 @@
         <span class="muted">—</span>
         % end
       </td>
-      <td><a href="#" onclick="openEdit('user-{{i}}');return false">Edit</a></td>
+      <td>
+        <span class="user-row-actions">
+          % if i > 0:
+          <form method="post" action="{{browser_root}}/ui/user/move" class="inline-form">
+            <input type="hidden" name="index" value="{{i}}"/><input type="hidden" name="direction" value="up"/>
+            <button type="submit" class="link-btn" title="Move up">&uarr;</button>
+          </form>
+          % end
+          % if i < len(state.users) - 1:
+          <form method="post" action="{{browser_root}}/ui/user/move" class="inline-form">
+            <input type="hidden" name="index" value="{{i}}"/><input type="hidden" name="direction" value="down"/>
+            <button type="submit" class="link-btn" title="Move down">&darr;</button>
+          </form>
+          % end
+          <form method="post" action="{{browser_root}}/ui/user/move-to" class="inline-form move-to-form">
+            <input type="hidden" name="index" value="{{i}}"/>
+            <input type="number" name="target" min="1" max="{{len(state.users)}}" value="{{i+1}}" class="move-to-input" title="Move to position #"/>
+            <button type="submit" class="link-btn" title="Move to position">&rArr;</button>
+          </form>
+          <a href="#" onclick="openEdit('user-{{i}}');return false">Edit</a>
+        </span>
+      </td>
     </tr>
     <tr id="user-{{i}}" class="edit-row"{{!' style="display:table-row"' if open_index==i and active_tab=='users' else ''}}>
-      <td colspan="5">
+      <td colspan="6">
         <form method="post" action="{{browser_root}}/ui/user/save" class="user-edit-form">
           <input type="hidden" name="index" value="{{i}}"/>
           <div class="user-edit-section">
