@@ -26,6 +26,10 @@ workersDefaults:
   # worker group's javaagents list.
   javaagents: []
 
+  # Extra volume mounts prepended to every worker group's extraMounts list.
+  # Same entry shape as workerGroups[].extraMounts.
+  extraMounts: []
+
   # Shared worker logging.properties. If empty, defaultLoggingProperties is used.
   loggingProperties: ""
 
@@ -126,6 +130,35 @@ workerGroups:
         auth: ""
         socketFactoryPort: ""
         socketFactoryClass: ""
+
+    # Per-group volume mounts at arbitrary paths, merged after
+    # workersDefaults.extraMounts. Pod volume name is extra-<name>.
+    #
+    #   name          — DNS-1123 label, max 57 chars, unique within the group
+    #   mountPath     — absolute path; must not collide with a built-in mount
+    #   type          — nfs (inline NFS volume) or pvc (existingClaim)
+    #   nfsServer     — type nfs; empty uses storages.defaultNfsServer
+    #   nfsPath       — type nfs; export path on the NFS server
+    #   existingClaim — type pvc; no PV/PVC is created by this feature
+    #   readOnly      — mount-level flag, default false
+    extraMounts: []
+    # Example — DocHub document stores and PDF fonts for a public-worker group.
+    # These paths are the Kramerius defaults, so no dochub.* property override is needed:
+    #   - name: dochub-permanent
+    #     mountPath: /root/.kramerius4/docs/permanent
+    #     type: nfs
+    #     nfsServer: ""
+    #     nfsPath: /export/kramerius/docs/permanent
+    #     readOnly: false
+    #   - name: dochub-user-out
+    #     mountPath: /root/.kramerius4/docs/user-out
+    #     type: nfs
+    #     nfsPath: /export/kramerius/docs/user-out
+    #   - name: fonts
+    #     mountPath: /root/.kramerius4/fonts
+    #     type: nfs
+    #     nfsPath: /export/kramerius/fonts
+    #     readOnly: true
 
     # Polling intervals for the worker process loop.
     workerLoopSleepSecs: 10

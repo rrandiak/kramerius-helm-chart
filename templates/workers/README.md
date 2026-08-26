@@ -57,6 +57,7 @@ for dispatch callbacks.
 | `/data/audioserver` | audioserver media PVC | ReadWriteMany | Audio derivatives |
 | `/data/pdfserver` | pdfserver media PVC | ReadWriteMany | PDF derivatives |
 | `/data/import/*` | import PVC(s) | ReadWriteMany | Source ingest directories; multiple import volumes supported |
+| any path | `extra-<name>` (`workerGroups[].extraMounts`) | depends on backend | Per-group NFS export or existing PVC at an arbitrary path |
 
 The `tomcat-logs` PVC is per-pod via `volumeClaimTemplates`. All other volumes are shared across
 group replicas. The `process-logs` PVC (`workersDefaults.processLogs`) is shared across **all** worker
@@ -169,6 +170,66 @@ workerGroups:
       lpXml: ""        # leave empty to use image default
 ```
 
+### Extra Mounts per Group
+
+Every other worker volume is either at a path fixed by the template or comes from a global
+`storages.*` key, so it appears in **all** groups. `extraMounts` is the per-group escape hatch:
+it mounts an NFS export or an existing PVC at any path in that group's pods only.
+
+```yaml
+workersDefaults:
+  extraMounts: []          # optional; prepended to every group's list
+
+workerGroups:
+  - name: public
+    replicas: 1
+    image:
+      repository: ceskaexpedice/public-worker
+      tag: "7.2.0"
+    extraMounts:
+      - name: dochub-permanent                       # volume name: extra-dochub-permanent
+        mountPath: /root/.kramerius4/docs/permanent
+        type: nfs
+        nfsServer: ""                                # empty uses storages.defaultNfsServer
+        nfsPath: /export/kramerius/docs/permanent
+        readOnly: false
+      - name: dochub-user-out
+        mountPath: /root/.kramerius4/docs/user-out
+        type: nfs
+        nfsPath: /export/kramerius/docs/user-out
+      - name: fonts
+        mountPath: /root/.kramerius4/fonts
+        type: nfs
+        nfsPath: /export/kramerius/fonts
+        readOnly: true
+      - name: legacy
+        mountPath: /data/legacy
+        type: pvc
+        existingClaim: some-existing-pvc
+```
+
+| Field | Required | Notes |
+|---|---|---|
+| `name` | yes | DNS-1123 label, max 57 chars; unique within the group; volume is named `extra-<name>` |
+| `mountPath` | yes | Absolute path; must not collide with a built-in mount or another entry in the same group |
+| `type` | yes | `nfs` — inline NFS volume; `pvc` — mounts `existingClaim` |
+| `nfsServer` | no (`nfs`) | Empty falls back to `storages.defaultNfsServer`; render fails if both are empty |
+| `nfsPath` | yes (`nfs`) | Export path on the NFS server |
+| `existingClaim` | yes (`pvc`) | This feature never creates PVs/PVCs — use `storages.*` for chart-managed claims |
+| `readOnly` | no | Mount-level flag, default `false` |
+
+`type: pvc` deliberately takes an existing claim only; chart-managed PV/PVC pairs belong in
+`storages.*`, which avoids per-group duplicates of the same cluster-scoped PV.
+
+The example above is the DocHub case: `dochub.storage.permanent` and `dochub.storage.user`
+default to `${sys:user.home}/.kramerius4/docs/{permanent,user-out}`, so mounting at those exact
+paths needs no `configuration.properties` change. Paths under `/root/.kramerius4` nest inside the
+config-dir `emptyDir` — kubelet mounts the parent first, the same way the built-in
+`configuration.properties` subPath mount already works.
+
+Changes to `extraMounts` roll the group's pods automatically: `kramerius.checksum.workerPod`
+hashes the whole group.
+
 ### Shared Tomcat Logs PVC
 
 All worker StatefulSets share the same PVC configuration object (`workersDefaults.tomcatLogs`) but each
@@ -237,6 +298,9 @@ larger CPU limits during peak ingest.
   the pod name and the headless Service DNS, so you do not set it manually.
 - **Multiple import volumes.** The chart supports mounting more than one import PVC per worker
   group. Each import volume maps to a distinct path under `/data/import/*`.
+- **extraMounts is per group.** Unlike `storages.*` volumes (global, mounted in every group),
+  `extraMounts` entries appear only in the groups that declare them. NFS entries are inline
+  volumes — no PV, no PVC, nothing cluster-scoped to clean up on release deletion.
 - **Profile subsets and replicas are independent knobs.** You can have a single-replica group
   for serial imports and a 3-replica group for parallel re-indexing, each with different profile
   subsets, using the same worker image.

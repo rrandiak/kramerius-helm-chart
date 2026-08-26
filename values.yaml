@@ -398,6 +398,10 @@ workersDefaults:
   # For different agents per replica, use separate worker groups (one replica each) or the same list for all pods in a group.
   javaagents: []
 
+  # Extra volume mounts prepended to every worker group's extraMounts list.
+  # Same entry shape as workerGroups[].extraMounts (see below).
+  extraMounts: []
+
   # Tomcat logging.properties for all worker pods (shared across all worker groups).
   # Leave empty to write no logging configuration (uses JVM defaults).
   loggingProperties: ""
@@ -465,6 +469,7 @@ workersDefaults:
 #   env         - additional env vars merged on top of defaults
 #   config      - server.xml, lp.xml, and configurationPropertiesExtra (merged with chart base generated from akubraConfig/solrConfig)
 #   javaagents - optional list merged after workersDefaults.javaagents
+#   extraMounts - optional per-group NFS/PVC mounts, merged after workersDefaults.extraMounts
 #   shadowEnv - optional env var overlay (see shadow: at top for global CATALINA_OPTS/configurationPropertiesExtra overlays)
 #   livenessProbe  - optional k8s probe spec; omitted when empty
 #   readinessProbe - optional k8s probe spec; omitted when empty
@@ -501,6 +506,26 @@ workerGroups:
         socketFactoryClass: ""
     catalinaOptsOverride: ""
     customConfigs: []
+    # Per-group volume mounts at arbitrary paths. Volume name is extra-<name>.
+    # type: nfs — inline NFS volume; nfsServer empty uses storages.defaultNfsServer.
+    # type: pvc — mounts existingClaim; no PV/PVC is created by this feature.
+    extraMounts: []
+    # Example — DocHub document stores and PDF fonts for a public-worker group:
+    #   - name: dochub-permanent
+    #     mountPath: /root/.kramerius4/docs/permanent
+    #     type: nfs
+    #     nfsServer: ""
+    #     nfsPath: /export/kramerius/docs/permanent
+    #     readOnly: false
+    #   - name: dochub-user-out
+    #     mountPath: /root/.kramerius4/docs/user-out
+    #     type: nfs
+    #     nfsPath: /export/kramerius/docs/user-out
+    #   - name: fonts
+    #     mountPath: /root/.kramerius4/fonts
+    #     type: nfs
+    #     nfsPath: /export/kramerius/fonts
+    #     readOnly: true
     config:
       # Extra configuration.properties entries. Accepts a string (raw lines) or a list of {key, value} maps.
       configurationPropertiesExtra: ""
