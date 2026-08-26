@@ -55,6 +55,7 @@ workersDefaults:
     fromUser: ""
     smtp:
       user: ""
+      pass: ""
       host: ""
       startttlsEnable: ""
       port: ""
@@ -124,6 +125,7 @@ workerGroups:
       fromUser: ""
       smtp:
         user: ""
+        pass: ""
         host: ""
         startttlsEnable: ""
         port: ""

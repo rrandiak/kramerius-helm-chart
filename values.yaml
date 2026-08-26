@@ -426,6 +426,9 @@ workersDefaults:
     fromUser: ""
     smtp:
       user: ""
+      # SMTP password, written as `mail.smtp.pass` into the worker ConfigMap in
+      # plaintext (same handling as workersDefaults.token.secret).
+      pass: ""
       host: ""
       startttlsEnable: ""
       port: ""
@@ -498,6 +501,7 @@ workerGroups:
       fromUser: ""
       smtp:
         user: ""
+        pass: ""
         host: ""
         startttlsEnable: ""
         port: ""

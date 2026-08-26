@@ -1,5 +1,6 @@
 mail.from.user=***
 mail.smtp.user=***
+mail.smtp.pass=***
 
 mail.smtp.host=***
 mail.smtp.startttls.enable=true | false
