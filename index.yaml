@@ -3,7 +3,21 @@ entries:
   kramerius:
   - apiVersion: v2
     appVersion: 7.2.0
-    created: "2026-08-27T07:43:06.185917044Z"
+    created: "2026-08-27T12:08:38.24901812Z"
+    description: Kramerius 7 - digital library system
+    digest: 0b639d0d58ca4f8971423f1abcb55da25a059666e244a3f2734f0815e5e13fd1
+    icon: https://system-kramerius.cz/wp-content/uploads/2025/11/cropped-favicon-32x32.webp
+    maintainers:
+    - email: robert.randiak@mzk.cz
+      name: Randiak Robert
+    name: kramerius
+    type: application
+    urls:
+    - https://rrandiak.github.io/kramerius-helm-chart/kramerius-1.3.1.tgz
+    version: 1.3.1
+  - apiVersion: v2
+    appVersion: 7.2.0
+    created: "2026-08-27T12:08:38.243845691Z"
     description: Kramerius 7 - digital library system
     digest: 9905e6808b4856c5832c8c8f4932d4d57e37ed0df7a3bab17b3cc707cfb86b03
     icon: https://system-kramerius.cz/wp-content/uploads/2025/11/cropped-favicon-32x32.webp
@@ -17,7 +31,7 @@ entries:
     version: 1.3.0
   - apiVersion: v2
     appVersion: 7.2.0
-    created: "2026-08-27T07:43:06.178953228Z"
+    created: "2026-08-27T12:08:38.239358331Z"
     description: Kramerius 7 - digital library system
     digest: 4336edbc82f0ccd459845042a1addd13ee4100ac60db7ecdafb836dc73cab362
     icon: https://system-kramerius.cz/wp-content/uploads/2025/11/cropped-favicon-32x32.webp
@@ -31,7 +45,7 @@ entries:
     version: 1.2.1
   - apiVersion: v2
     appVersion: 7.2.0
-    created: "2026-08-27T07:43:06.171659823Z"
+    created: "2026-08-27T12:08:38.234291088Z"
     description: Kramerius 7 - digital library system
     digest: 1130d3038232e5eadb2e0dea8de02729ecf89930c615c58faf6445371f295bf0
     icon: https://system-kramerius.cz/wp-content/uploads/2025/11/cropped-favicon-32x32.webp
@@ -45,7 +59,7 @@ entries:
     version: 1.2.0
   - apiVersion: v2
     appVersion: 7.2.0
-    created: "2026-08-27T07:43:06.165907293Z"
+    created: "2026-08-27T12:08:38.229410714Z"
     description: Kramerius 7 - digital library system
     digest: 411dff272ce089c94846fc8af391aa2ea7aa0d3e2a41084758ec8100c23a3dbe
     icon: https://system-kramerius.cz/wp-content/uploads/2025/11/cropped-favicon-32x32.webp
@@ -59,7 +73,7 @@ entries:
     version: 1.1.3
   - apiVersion: v2
     appVersion: 7.2.0
-    created: "2026-08-27T07:43:06.159635136Z"
+    created: "2026-08-27T12:08:38.22498172Z"
     description: Kramerius 7 - digital library system
     digest: 898eb8cdf0f029763b73c3ad45e4130267e821b04598c8a383c5c5c730f79fa9
     icon: https://system-kramerius.cz/wp-content/uploads/2025/11/cropped-favicon-32x32.webp
@@ -73,7 +87,7 @@ entries:
     version: 1.1.2
   - apiVersion: v2
     appVersion: 7.2.0
-    created: "2026-08-27T07:43:06.153343093Z"
+    created: "2026-08-27T12:08:38.219791315Z"
     description: Kramerius 7 - digital library system
     digest: 7dcccc30e5b8f575de211f5eba595c77d7573ebb4fde777c8490435bc99c823e
     icon: https://system-kramerius.cz/wp-content/uploads/2025/11/cropped-favicon-32x32.webp
@@ -87,7 +101,7 @@ entries:
     version: 1.1.1
   - apiVersion: v2
     appVersion: 7.2.0
-    created: "2026-08-27T07:43:06.147321004Z"
+    created: "2026-08-27T12:08:38.215399177Z"
     description: Kramerius 7 - digital library system
     digest: 0dfaf9f9913dbc44cc478b69a10107ea57b075a035d998a29e6387f74f5ec39b
     icon: https://system-kramerius.cz/wp-content/uploads/2025/11/cropped-favicon-32x32.webp
@@ -101,7 +115,7 @@ entries:
     version: 1.1.0
   - apiVersion: v2
     appVersion: 7.2.0
-    created: "2026-08-27T07:43:06.14080014Z"
+    created: "2026-08-27T12:08:38.210411132Z"
     description: Kramerius 7 - digital library system
     digest: a0fbe681fd9eb93fa7460e487d118d8c09d83e57770ba0be057e2c247a7d6e2e
     icon: https://system-kramerius.cz/wp-content/uploads/2025/11/cropped-favicon-32x32.webp
@@ -115,7 +129,7 @@ entries:
     version: 1.1.0-rc5
   - apiVersion: v2
     appVersion: 7.2.0
-    created: "2026-08-27T07:43:06.135351411Z"
+    created: "2026-08-27T12:08:38.20559271Z"
     description: Kramerius 7 - digital library system
     digest: b151edadb793576a4692969653624c8364737eeb4430c312c156d01a60c478ff
     icon: https://system-kramerius.cz/wp-content/uploads/2025/11/cropped-favicon-32x32.webp
@@ -129,7 +143,7 @@ entries:
     version: 1.1.0-rc4
   - apiVersion: v2
     appVersion: 7.2.0
-    created: "2026-08-27T07:43:06.129234749Z"
+    created: "2026-08-27T12:08:38.201104599Z"
     description: Kramerius 7 - digital library system
     digest: bb267854d28f3ed465a1d2f90cd7ae6651893b52355231b578164f987f683b6c
     maintainers:
@@ -140,4 +154,4 @@ entries:
     urls:
     - https://rrandiak.github.io/kramerius-helm-chart/kramerius-1.0.9.tgz
     version: 1.0.9
-generated: "2026-08-27T07:43:06.126440478Z"
+generated: "2026-08-27T12:08:38.198789177Z"
