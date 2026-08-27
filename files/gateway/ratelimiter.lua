@@ -155,7 +155,8 @@ function _M.on_access()
   if RC.user_resolution.enabled then
     req_username = common.resolve_username(
       RC.user_resolution.cache_ttl,
-      RC.user_resolution.url
+      RC.user_resolution.url,
+      RC.user_resolution.timeouts
     )
   end
 

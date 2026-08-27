@@ -57,7 +57,7 @@ gateway:
     tag: "1.27.1.2-3-alpine"
     pullPolicy: IfNotPresent
     pullSecret: "registry-pull-secret"
-  resolver: kube-dns.kube-system.svc.cluster.local valid=30s ipv6=off
+  luaSocketLogErrors: "on"
   trustedProxyCidrs:
     - 10.0.0.0/8
     - 172.16.0.0/12

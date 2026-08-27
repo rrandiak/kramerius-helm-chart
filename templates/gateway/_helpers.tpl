@@ -62,6 +62,14 @@ return {
     enabled   = {{ $ur.enabled | default false }},
     cache_ttl = {{ $ur.cacheTtlSeconds | default 300 }},
     url       = "http://kramerius-public.{{ .Values.namespace }}.svc.cluster.local:8080/search/api/client/v7.0/user",
+    -- The hostname above is resolved by gateway_common, not by nginx's resolver: cosocket DNS is
+    -- bounded by resolver_timeout (30s by default), not by tcpsock:settimeout().
+    timeouts = {
+      dns_timeout_ms    = {{ $ur.dnsTimeoutMs | default 3000 }},
+      dns_retrans       = {{ $ur.dnsRetrans | default 2 }},
+      dns_cache_secs    = {{ $ur.dnsCacheSeconds | default 30 }},
+      socket_timeout_ms = {{ $ur.socketTimeoutMs | default 3000 }},
+    },
   },
   session_affinity = {
     {{- $sa := .Values.gateway.sessionAffinity | default dict }}

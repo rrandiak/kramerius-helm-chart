@@ -1,5 +1,5 @@
 # Gateway — core workload and infrastructure values
-# Covers: image, resolver, proxy settings, Redis storage, user resolution, management API, error pages, resources.
+# Covers: image, proxy settings, Redis storage, user resolution, management API, error pages, resources.
 #
 # Access logs: OpenResty writes JSON access lines to stdout (`json_log` in nginx.conf). Ingestion into
 # ClickStack (e.g. Vector → ClickHouse → HyperDX) is handled outside this chart — there is no ELK/Filebeat sidecar.
@@ -18,9 +18,9 @@ gateway:
     pullPolicy: IfNotPresent
     pullSecret: ""
 
-  # In-cluster DNS resolver for dynamic upstream hostname resolution.
-  # Format: <address> valid=<ttl> [ipv6=off]
-  resolver: kube-dns.kube-system.svc.cluster.local valid=30s ipv6=off
+  # Log cosocket errors. Off discards them silently, including DNS failures in user resolution —
+  # which is what hid a 30 s stall on the first request per bearer token.
+  luaSocketLogErrors: "on"
 
   # CIDRs of trusted reverse proxies (Ingress controllers, load balancers).
   # Client IP is resolved from X-Forwarded-For by skipping these.
@@ -138,6 +138,13 @@ gateway:
     enabled: false
     # Seconds to cache resolved username per token in memory (0 = no caching; cache resets on pod restart).
     cacheTtlSeconds: 300
+    # Timeouts for the lookup. Worst case per cache miss is dnsTimeoutMs * dnsRetrans, then
+    # socketTimeoutMs per connect/send/receive. A failed lookup is cached as "" for
+    # cacheTtlSeconds, so a miss cannot recur on every request.
+    dnsTimeoutMs: 3000
+    dnsRetrans: 2
+    dnsCacheSeconds: 30
+    socketTimeoutMs: 3000
 
   # Management API — single API for all runtime configuration:
   # rate limits, download limits, peak hours, and ban management.

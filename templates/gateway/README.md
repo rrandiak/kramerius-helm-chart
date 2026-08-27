@@ -36,7 +36,7 @@ dashboard + Slack] --> GW
 |---|---|---|
 | Deployment | `gateway-openresty` | Single replica |
 | Service | `gateway-openresty` | ClusterIP, port 80 |
-| ConfigMap | `gateway-openresty-nginx` | Full `nginx.conf` including resolver and shared dict declarations |
+| ConfigMap | `gateway-openresty-nginx` | Full `nginx.conf` including shared dict declarations |
 | ConfigMap | `gateway-openresty-lua` | All Lua scripts: routing, identity resolution, rule evaluation, ban logic |
 | ConfigMap | `gateway-openresty-errors` | 429 response body template and line-delimited titles for random 429 responses |
 | ConfigMap | `gateway-redis-config` | Redis `redis.conf` (RDB snapshots, optional `requirepass`) |
@@ -66,7 +66,6 @@ The gateway handles two kinds of routing:
 ```yaml
 gateway:
   curatorPathPrefix: "/search/api/admin/"
-  resolver: kube-dns.kube-system.svc.cluster.local valid=30s ipv6=off
 ```
 
 **Virtual host routing** — process-manager, gateway-management-client, and hyperdx each receive traffic forwarded by the Ingress/Gateway API controller based on `Host` header. Authentication for these backends is configured via ingress controller annotations in the respective `ingress.*` or `gatewayApi.*` values — the gateway itself applies only rate limiting on the main API host.

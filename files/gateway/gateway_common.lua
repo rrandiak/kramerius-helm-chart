@@ -154,17 +154,89 @@ function _M.match_profile(profiles, req_ip, req_username)
   return nil
 end
 
+-- ── DNS ──────────────────────────────────────────────────────────────────────
+-- Resolved explicitly instead of handing connect() a hostname. Cosocket name resolution is bounded
+-- by nginx's resolver_timeout (30s by default) and *not* by tcpsock:settimeout(), which covers only
+-- connect/send/receive — so a DNS failure stalled the entire request for 30s, silently, because
+-- lua_socket_log_errors was off. Resolving here keeps the timeout ours and hands connect() a
+-- literal IP. This is the same approach sticky_balancer already takes for backend pods.
+
+local _nameservers
+
+local function nameservers()
+  if _nameservers then return _nameservers end
+  local ns = {}
+  local f = io.open("/etc/resolv.conf", "r")
+  if f then
+    for line in f:lines() do
+      local ip = line:match("^nameserver%s+(%S+)")
+      if ip then table.insert(ns, ip) end
+    end
+    f:close()
+  end
+  _nameservers = #ns > 0 and ns or { "10.96.0.10" }
+  return _nameservers
+end
+
+--- Resolve a hostname to an IPv4 address, cached in rate_misc. Returns nil on failure.
+local function resolve_host(host, timeout_ms, retrans, cache_secs)
+  if host:match("^%d+%.%d+%.%d+%.%d+$") then return host end
+
+  local cache_key = "dns:" .. host
+  local cached = ngx.shared.rate_misc:get(cache_key)
+  if cached then return cached end
+
+  local resolver = require "resty.dns.resolver"
+  local r, err = resolver:new{
+    nameservers = nameservers(),
+    retrans     = retrans,
+    timeout     = timeout_ms,
+  }
+  if not r then
+    ngx.log(ngx.WARN, "resolve_host: resolver init failed for ", host, ": ", err)
+    return nil
+  end
+
+  local answers, qerr = r:query(host, { qtype = 1 })  -- TYPE_A
+  if not answers or answers.errcode then
+    ngx.log(ngx.WARN, "resolve_host: query failed for ", host, ": ",
+      qerr or (answers and answers.errstr) or "unknown")
+    return nil
+  end
+
+  for _, ans in ipairs(answers) do
+    if ans.type == 1 then
+      if cache_secs > 0 then
+        ngx.shared.rate_misc:set(cache_key, ans.address, cache_secs)
+      end
+      return ans.address
+    end
+  end
+  ngx.log(ngx.WARN, "resolve_host: no A record for ", host)
+  return nil
+end
+
+--- Public wrapper with defaults, for any cosocket that would otherwise connect by hostname.
+function _M.resolve_host(host, timeout_ms, retrans, cache_secs)
+  return resolve_host(host, timeout_ms or 3000, retrans or 2, cache_secs or 30)
+end
+
 -- ── username resolution ──────────────────────────────────────────────────────
 
-local function fetch_username(token, url)
-  local sock = ngx.socket.tcp()
-  sock:settimeout(1000)
+local function fetch_username(token, url, tm)
   local host, path = url:match("^http://([^/]+)(/.+)$")
-  if not host then sock:close(); return nil end
+  if not host then return nil end
   local h, p_str = host:match("^(.+):(%d+)$")
   h = h or host
   local port = tonumber(p_str) or 80
-  local ok = sock:connect(h, port)
+
+  -- Host header keeps the name; only connect() gets the address.
+  local addr = resolve_host(h, tm.dns_timeout_ms, tm.dns_retrans, tm.dns_cache_secs)
+  if not addr then return nil end
+
+  local sock = ngx.socket.tcp()
+  sock:settimeout(tm.socket_timeout_ms)
+  local ok = sock:connect(addr, port)
   if not ok then sock:close(); return nil end
   local req = "GET " .. path .. " HTTP/1.0\r\n"
            .. "Host: " .. h .. "\r\n"
@@ -185,11 +257,21 @@ local function fetch_username(token, url)
   return data.uid
 end
 
+-- Worst case per cache miss is dns_timeout_ms * dns_retrans, then the socket timeout per
+-- connect/send/receive. Failures cache "" for cache_ttl, so a miss cannot repeat every request.
+local DEFAULT_TIMEOUTS = {
+  dns_timeout_ms    = 3000,
+  dns_retrans       = 2,
+  dns_cache_secs    = 30,
+  socket_timeout_ms = 3000,
+}
+
 -- Resolves the username from the Bearer token in the current request.
 -- Returns a string username, or nil if not authenticated / resolution disabled.
 -- cache_ttl: seconds to cache result in rate_misc shared dict (0 = no cache).
 -- url: Kramerius user API endpoint, e.g. http://kramerius-public.NS.svc.../user
-function _M.resolve_username(cache_ttl, url)
+-- timeouts: optional overrides for DEFAULT_TIMEOUTS.
+function _M.resolve_username(cache_ttl, url, timeouts)
   local auth = ngx.var.http_authorization
   if not auth then return nil end
   local token = auth:match("^[Bb]earer%s+(.+)$")
@@ -201,7 +283,12 @@ function _M.resolve_username(cache_ttl, url)
     return cached ~= "" and cached or nil
   end
 
-  local username = fetch_username(token, url) or ""
+  local tm = {}
+  for k, v in pairs(DEFAULT_TIMEOUTS) do
+    tm[k] = (timeouts and timeouts[k]) or v
+  end
+
+  local username = fetch_username(token, url, tm) or ""
   if cache_ttl and cache_ttl > 0 then
     ngx.shared.rate_misc:set(cache_key, username, cache_ttl)
   end

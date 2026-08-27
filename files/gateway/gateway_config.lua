@@ -19,7 +19,14 @@ local _body_cache   = {}    -- { profile_name|"" → partial 429 body (no __TITL
 local function redis_connect()
   local r = redis:new()
   r:set_timeout(1000)
-  local ok, err = r:connect(RC.redis.host, RC.redis.port)
+  -- Resolve first: set_timeout() does not bound cosocket name resolution, which falls back to
+  -- nginx's resolver_timeout (30s by default). Same reason gateway_common resolves its own host.
+  local addr = common.resolve_host(RC.redis.host)
+  if not addr then
+    ngx.log(ngx.WARN, "gateway_config: cannot resolve redis host ", RC.redis.host)
+    return nil
+  end
+  local ok, err = r:connect(addr, RC.redis.port)
   if not ok then
     ngx.log(ngx.WARN, "gateway_config: redis connect failed: ", err)
     return nil

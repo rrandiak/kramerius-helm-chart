@@ -63,8 +63,9 @@ gateway:
     tag: "1.27.1.2-3-alpine"
     pullPolicy: IfNotPresent
     pullSecret: ""
-  # CoreDNS / cluster DNS (variable proxy_pass to kramerius backends). Adjust per cluster.
-  resolver: kube-dns.kube-system.svc.cluster.local valid=30s ipv6=off
+  # Cosocket errors are discarded when off, which is what hid a 30 s DNS stall on the first
+  # request per bearer token. Keep on.
+  luaSocketLogErrors: "on"
   # CIDRs of trusted upstream proxies (nginx-ingress pod/node CIDR). Only these IPs are trusted
   # to set X-Forwarded-For. $remote_addr is used for rate limiting — not raw XFF — so this must
   # be set correctly to prevent clients spoofing their IP to bypass rate limits.
@@ -126,6 +127,12 @@ gateway:
   userResolution:
     enabled: false
     cacheTtlSeconds: 300
+    # Worst case per cache miss is dnsTimeoutMs * dnsRetrans, then socketTimeoutMs per
+    # connect/send/receive. A failed lookup is cached as "" for cacheTtlSeconds.
+    dnsTimeoutMs: 3000
+    dnsRetrans: 2
+    dnsCacheSeconds: 30
+    socketTimeoutMs: 3000
   rateLimiting:
     rlBurst: 0.5
     dlBurst: 0.5
