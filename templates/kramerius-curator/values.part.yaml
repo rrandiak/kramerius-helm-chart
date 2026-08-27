@@ -58,6 +58,18 @@ krameriusCurator:
     # Prefer top-level krameriusCurator.serverXml above.
     serverXml: ""
 
+  # Volume mounts at arbitrary paths, for data the chart does not manage.
+  # Pod volume name is extra-<name>. Same entry shape and validation as
+  # krameriusPublic.extraMounts; references an existing NFS export or PVC and
+  # never creates a PVC.
+  #
+  # extraMounts:
+  #   - name: scratch
+  #     mountPath: /data/scratch
+  #     type: pvc
+  #     existingClaim: curator-scratch
+  extraMounts: []
+
   # Kubernetes liveness probe definition.
   # Leave empty ({}) to use the chart default (HTTP GET on /search/api/client/v7.0/info).
   livenessProbe: {}

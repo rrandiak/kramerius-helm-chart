@@ -49,6 +49,39 @@ RO mounts]
 | `/data/akubra/datastreamStore` | Akubra datastream store PVC | ReadOnly | Stores binary datastreams |
 | `/usr/local/tomcat/logs` | Tomcat logs PVC (see below) | ReadWriteMany | Persisted Tomcat / app logs |
 | `/root/.kramerius4/javaagents/*` | javaagents shared PVC | ReadOnly | Optional Java agents, including OTEL |
+| any path | `extra-<name>` (`krameriusPublic.extraMounts`) | depends on backend | NFS export or existing PVC at an arbitrary path |
+
+### Extra mounts
+
+Every other volume above sits at a path fixed by the template or comes from a global
+`storages.*` key. `extraMounts` is the escape hatch: it mounts an NFS export or an
+**existing** PVC at any path in the public pods. It never creates a PVC — use
+`storages.*` for chart-managed storage.
+
+```yaml
+krameriusPublic:
+  extraMounts:
+    - name: shared-fonts                 # volume name: extra-shared-fonts
+      mountPath: /opt/fonts
+      type: nfs
+      nfsServer: ""                      # empty uses storages.defaultNfsServer
+      nfsPath: /export/kramerius/fonts
+      readOnly: true
+    - name: reports
+      mountPath: /data/reports
+      type: pvc
+      existingClaim: reports-pvc
+```
+
+Validated at render time by `kramerius.extraMounts.validate` (shared with worker groups):
+`name` must be a DNS-1123 label of at most 57 chars, `mountPath` must be absolute and must
+not collide with a built-in mount or a `customConfigs` mountPath, names and paths must be
+unique, and `type` must be `nfs` (needs `nfsPath` plus a server) or `pvc` (needs
+`existingClaim`). Changes roll the pods — `checksum/kramerius-values` hashes the whole
+`krameriusPublic` block.
+
+For **file content** rather than a volume, use `customConfigs`, which mounts inline
+content from the app ConfigMap.
 
 ### Tomcat logs volume
 

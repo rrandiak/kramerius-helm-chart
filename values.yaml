@@ -272,6 +272,17 @@ krameriusPublic:
   catalinaOptsExtra: ""
   catalinaOptsOverride: ""
   customConfigs: []
+  # Volume mounts at arbitrary paths. Pod volume name is extra-<name>.
+  #
+  #   name          — DNS-1123 label, max 57 chars, unique within the app
+  #   mountPath     — absolute path; must not collide with a built-in mount
+  #                   or a customConfigs mountPath
+  #   type          — nfs (inline NFS volume) or pvc (existingClaim)
+  #   nfsServer     — type nfs; empty uses storages.defaultNfsServer
+  #   nfsPath       — type nfs; export path on the NFS server
+  #   existingClaim — type pvc; extraMounts never creates PVCs
+  #   readOnly      — optional, default false
+  extraMounts: []
   config:
     # Extra configuration.properties entries. Accepts a string (raw lines) or a list of {key, value} maps.
     configurationPropertiesExtra: ""
@@ -318,6 +329,8 @@ krameriusCurator:
   catalinaOptsExtra: ""
   catalinaOptsOverride: ""
   customConfigs: []
+  # Volume mounts at arbitrary paths. Same entry shape as krameriusPublic.extraMounts.
+  extraMounts: []
   config:
     # Extra configuration.properties entries. Accepts a string (raw lines) or a list of {key, value} maps.
     configurationPropertiesExtra: ""

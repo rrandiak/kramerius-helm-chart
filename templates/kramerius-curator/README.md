@@ -53,6 +53,22 @@ RW mounts]
 | `/data/import/*` | Import store PVC(s) | ReadOnly | Inspect ingestion packages (writing handled by importer) |
 | `/usr/local/tomcat/logs` | Tomcat logs PVC (see below) | ReadWriteMany | Persisted Tomcat / application logs |
 | `/root/.kramerius4/javaagents/*` | javaagents shared PVC | ReadOnly | Optional Java agents, including OTEL |
+| any path | `extra-<name>` (`krameriusCurator.extraMounts`) | depends on backend | NFS export or existing PVC at an arbitrary path |
+
+### Extra mounts
+
+`extraMounts` mounts an NFS export or an **existing** PVC at any path in the curator
+pods; it never creates a PVC. Entry shape, validation, and rollout behaviour are
+identical to the public instance — see `templates/kramerius-public/README.md`.
+
+```yaml
+krameriusCurator:
+  extraMounts:
+    - name: scratch                      # volume name: extra-scratch
+      mountPath: /data/scratch
+      type: pvc
+      existingClaim: curator-scratch
+```
 
 ### Tomcat logs volume
 

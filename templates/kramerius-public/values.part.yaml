@@ -46,6 +46,29 @@ krameriusPublic:
     # Prefer top-level krameriusPublic.serverXml above.
     serverXml: ""
 
+  # Volume mounts at arbitrary paths, for data the chart does not manage
+  # (extra fonts, an export share, a scratch volume). Pod volume name is
+  # extra-<name>. Unlike customConfigs — which mounts inline content from the
+  # app ConfigMap — these reference an existing NFS export or an existing PVC.
+  # extraMounts never creates a PVC.
+  #
+  #   name          — DNS-1123 label, max 57 chars, unique within the app
+  #   mountPath     — absolute path; must not collide with a built-in mount
+  #                   or a customConfigs mountPath
+  #   type          — nfs (inline NFS volume) or pvc (existingClaim)
+  #   nfsServer     — type nfs; empty uses storages.defaultNfsServer
+  #   nfsPath       — type nfs; export path on the NFS server
+  #   existingClaim — type pvc; name of a pre-existing PVC
+  #   readOnly      — optional, default false
+  #
+  # extraMounts:
+  #   - name: shared-fonts
+  #     mountPath: /opt/fonts
+  #     type: nfs
+  #     nfsPath: /export/fonts
+  #     readOnly: true
+  extraMounts: []
+
   # Kubernetes liveness probe definition.
   # Leave empty ({}) to use the chart default (HTTP GET on /search/api/client/v7.0/info).
   livenessProbe: {}

@@ -144,6 +144,7 @@ Status reflects **Kubernetes manifests** (`*.yaml`) and **Helm helpers** under `
 | `kramerius.storagePvcStorageClass` | storage class for a PVC-backed storage entry |
 | `kramerius.storagePvcName` | PVC name for a storage entry (existing claim or chart-generated) |
 | `kramerius.sharedStorageVolume` | pod volume spec for an NFS or PVC storage entry |
+| `kramerius.extraMounts.{validate,volumeMounts,volumes}` | arbitrary-path NFS / existing-PVC mounts, shared by worker groups, public, and curator |
 | `kramerius.tomcatLogsNfsVolume` | NFS volume spec for Tomcat log directory |
 | `kramerius.tomcatLogsVolumeClaimTemplates` | volumeClaimTemplates for PVC-backed Tomcat logs |
 | `kramerius.tomcatLogsPodNameEnv` | POD_NAME env var from fieldRef for log subdirectory naming |

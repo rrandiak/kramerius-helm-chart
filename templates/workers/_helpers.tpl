@@ -82,55 +82,12 @@ Usage: include "kramerius.workers.validateExtraMounts" (dict "root" $root "group
 {{- define "kramerius.workers.validateExtraMounts" -}}
 {{- $root := .root }}
 {{- $group := .group }}
-{{- $reserved := .reserved | default list }}
-{{- $defaultNfsServer := (($root.Values.storages | default dict).defaultNfsServer | default "") | toString | trim }}
-{{- $seenNames := list }}
-{{- $seenPaths := list }}
-{{- range $m := (include "kramerius.workers.extraMounts" (dict "root" $root "group" $group) | fromJsonArray) }}
-{{- $name := ($m.name | default "") | toString | trim }}
-{{- $path := ($m.mountPath | default "") | toString | trim }}
-{{- $type := ($m.type | default "") | toString | trim }}
-{{- if not $name }}
-  {{- fail (printf "workerGroups[%s].extraMounts: every entry requires a name" $group.name) }}
-{{- end }}
-{{- if not (regexMatch "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$" $name) }}
-  {{- fail (printf "workerGroups[%s].extraMounts[%s]: name must be lowercase alphanumeric with dashes (used as a volume name)" $group.name $name) }}
-{{- end }}
-{{- if gt (len $name) 57 }}
-  {{- fail (printf "workerGroups[%s].extraMounts[%s]: name must be at most 57 characters (volume name is extra-<name>)" $group.name $name) }}
-{{- end }}
-{{- if has $name $seenNames }}
-  {{- fail (printf "workerGroups[%s].extraMounts: duplicate name %q" $group.name $name) }}
-{{- end }}
-{{- if not $path }}
-  {{- fail (printf "workerGroups[%s].extraMounts[%s]: mountPath is required" $group.name $name) }}
-{{- end }}
-{{- if not (hasPrefix "/" $path) }}
-  {{- fail (printf "workerGroups[%s].extraMounts[%s]: mountPath %q must be absolute" $group.name $name $path) }}
-{{- end }}
-{{- if has $path $reserved }}
-  {{- fail (printf "workerGroups[%s].extraMounts[%s]: mountPath %q conflicts with a built-in volume mount" $group.name $name $path) }}
-{{- end }}
-{{- if has $path $seenPaths }}
-  {{- fail (printf "workerGroups[%s].extraMounts: duplicate mountPath %q" $group.name $path) }}
-{{- end }}
-{{- if eq $type "nfs" }}
-  {{- if not (($m.nfsPath | default "") | toString | trim) }}
-    {{- fail (printf "workerGroups[%s].extraMounts[%s]: nfsPath is required when type is \"nfs\"" $group.name $name) }}
-  {{- end }}
-  {{- if not (or (($m.nfsServer | default "") | toString | trim) $defaultNfsServer) }}
-    {{- fail (printf "workerGroups[%s].extraMounts[%s]: nfsServer is empty and storages.defaultNfsServer is not set" $group.name $name) }}
-  {{- end }}
-{{- else if eq $type "pvc" }}
-  {{- if not (($m.existingClaim | default "") | toString | trim) }}
-    {{- fail (printf "workerGroups[%s].extraMounts[%s]: existingClaim is required when type is \"pvc\" (extraMounts does not create PVCs)" $group.name $name) }}
-  {{- end }}
-{{- else }}
-  {{- fail (printf "workerGroups[%s].extraMounts[%s]: type must be \"nfs\" or \"pvc\", got %q" $group.name $name $type) }}
-{{- end }}
-{{- $seenNames = append $seenNames $name }}
-{{- $seenPaths = append $seenPaths $path }}
-{{- end }}
+{{- include "kramerius.extraMounts.validate" (dict
+  "root" $root
+  "mounts" (include "kramerius.workers.extraMounts" (dict "root" $root "group" $group) | fromJsonArray)
+  "reserved" (.reserved | default list)
+  "context" (printf "workerGroups[%s].extraMounts" $group.name)
+) }}
 {{- end }}
 
 {{/*
@@ -139,11 +96,9 @@ Usage: include "kramerius.workers.extraVolumeMounts" (dict "root" $root "group" 
 Indent with nindent 12 under container volumeMounts.
 */}}
 {{- define "kramerius.workers.extraVolumeMounts" -}}
-{{- range $m := (include "kramerius.workers.extraMounts" (dict "root" .root "group" .group) | fromJsonArray) }}
-- mountPath: {{ $m.mountPath }}
-  name: extra-{{ $m.name }}
-  readOnly: {{ $m.readOnly | default false }}
-{{- end }}
+{{- include "kramerius.extraMounts.volumeMounts" (dict
+  "mounts" (include "kramerius.workers.extraMounts" (dict "root" .root "group" .group) | fromJsonArray)
+) }}
 {{- end }}
 
 {{/*
@@ -154,17 +109,10 @@ Indent with nindent 8 under pod volumes.
 */}}
 {{- define "kramerius.workers.extraVolumes" -}}
 {{- $root := .root }}
-{{- range $m := (include "kramerius.workers.extraMounts" (dict "root" $root "group" .group) | fromJsonArray) }}
-- name: extra-{{ $m.name }}
-{{- if eq $m.type "nfs" }}
-  nfs:
-    server: {{ default (($root.Values.storages | default dict).defaultNfsServer) $m.nfsServer | quote }}
-    path: {{ $m.nfsPath | quote }}
-{{- else }}
-  persistentVolumeClaim:
-    claimName: {{ $m.existingClaim | quote }}
-{{- end }}
-{{- end }}
+{{- include "kramerius.extraMounts.volumes" (dict
+  "root" $root
+  "mounts" (include "kramerius.workers.extraMounts" (dict "root" $root "group" .group) | fromJsonArray)
+) }}
 {{- end }}
 
 {{/*

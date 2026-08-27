@@ -6,9 +6,18 @@
   {{- fail "krameriusPublic: catalinaOptsOverride and catalinaOptsExtra are mutually exclusive" }}
 {{- end }}
 {{- $pubReservedMounts := list "/root/.kramerius4" "/root/.kramerius4/configuration.properties" "/root/.kramerius4/keycloak.json" "/usr/local/tomcat/conf/logging.properties" "/usr/local/tomcat/logs" }}
+{{- $pubCustomConfigPaths := list }}
 {{- range .Values.krameriusPublic.customConfigs | default list }}
   {{- if has .mountPath $pubReservedMounts }}
     {{- fail (printf "krameriusPublic.customConfigs: mountPath %q conflicts with a built-in volume mount" .mountPath) }}
+  {{- end }}
+  {{- $pubCustomConfigPaths = append $pubCustomConfigPaths .mountPath }}
+{{- end }}
+{{- $pubExtraMounts := .Values.krameriusPublic.extraMounts | default list }}
+{{- include "kramerius.extraMounts.validate" (dict "root" . "mounts" $pubExtraMounts "reserved" $pubReservedMounts "context" "krameriusPublic.extraMounts") }}
+{{- range $pubExtraMounts }}
+  {{- if has .mountPath $pubCustomConfigPaths }}
+    {{- fail (printf "krameriusPublic.extraMounts: mountPath %q is already used by krameriusPublic.customConfigs" .mountPath) }}
   {{- end }}
 {{- end }}
 apiVersion: apps/v1
@@ -118,6 +127,7 @@ spec:
               name: akubra-datastream
               readOnly: true
             {{- end }}
+            {{- if $pubExtraMounts }}{{- include "kramerius.extraMounts.volumeMounts" (dict "mounts" $pubExtraMounts) | nindent 12 }}{{- end }}
           {{- with .Values.krameriusPublic.livenessProbe }}
           livenessProbe:
             {{- toYaml . | nindent 12 }}
@@ -145,5 +155,6 @@ spec:
 {{- include "kramerius.sharedStorageVolume" (dict "root" . "volumeName" "akubra-objectstore" "storageKey" "akubra-object-store") | nindent 8 }}
 {{- include "kramerius.sharedStorageVolume" (dict "root" . "volumeName" "akubra-datastream" "storageKey" "akubra-datastream-store") | nindent 8 }}
 {{- end }}
+{{- if $pubExtraMounts }}{{- include "kramerius.extraMounts.volumes" (dict "root" . "mounts" $pubExtraMounts) | nindent 8 }}{{- end }}
 {{- include "kramerius.tomcatLogsNfsVolume" (dict "root" . "volumeName" "kramerius-public-tomcat-logs" "tomcatLogs" .Values.krameriusPublic.tomcatLogs) | nindent 8 }}
 {{- include "kramerius.tomcatLogsVolumeClaimTemplates" (dict "root" . "volumeName" "kramerius-public-tomcat-logs" "tomcatLogs" .Values.krameriusPublic.tomcatLogs) | nindent 2 }}

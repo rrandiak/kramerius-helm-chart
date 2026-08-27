@@ -112,6 +112,9 @@ Where feature-specific Helm helpers live (templates/<feature>/_helpers.tpl):
   - networking — kramerius.ingressAnnotationsWithOptionalOAuth, ingress.annotationsMergedYaml
   - keycloak, storage-akubra, index-solr, lock-server, commons-kramerius, storage-import, storage-media — configuration.properties sections
   - cdk — kramerius.cdk.configurationProperties.part (merged when includeCdk and Values.cdk.enabled)
+
+Shared here (not feature-owned): kramerius.extraMounts.{validate,volumeMounts,volumes},
+used by worker groups, kramerius-public, and kramerius-curator.
 */}}
 
 {{/*
@@ -146,6 +149,114 @@ podAntiAffinity:
           matchLabels:
             {{- toYaml $matchLabels | nindent 12 }}
         topologyKey: {{ $topologyKey }}
+{{- end }}
+{{- end }}
+
+{{/*
+Extra mounts — shared by workers (per group) and the Kramerius apps (public, curator).
+An entry mounts an existing NFS export or an existing PVC at an arbitrary path;
+it never creates a PVC. Entry shape:
+
+  name          — DNS-1123 label, max 57 chars (pod volume name is extra-<name>)
+  mountPath     — absolute path; must not collide with a built-in mount
+  type          — nfs or pvc
+  nfsServer     — type nfs; empty uses storages.defaultNfsServer
+  nfsPath       — type nfs; export path on the NFS server
+  existingClaim — type pvc; name of a pre-existing PVC
+  readOnly      — optional, default false
+
+`context` is the values path used in error messages, e.g. "krameriusPublic.extraMounts".
+*/}}
+
+{{/*
+Validate extra mounts. Fails the render on unusable input rather than letting the
+API server reject the workload later.
+Usage: include "kramerius.extraMounts.validate" (dict "root" $ "mounts" $mounts "reserved" $reserved "context" "krameriusPublic.extraMounts")
+*/}}
+{{- define "kramerius.extraMounts.validate" -}}
+{{- $root := .root }}
+{{- $mounts := .mounts | default list }}
+{{- $reserved := .reserved | default list }}
+{{- $ctx := .context | default "extraMounts" }}
+{{- $defaultNfsServer := (($root.Values.storages | default dict).defaultNfsServer | default "") | toString | trim }}
+{{- $seenNames := list }}
+{{- $seenPaths := list }}
+{{- range $m := $mounts }}
+{{- $name := ($m.name | default "") | toString | trim }}
+{{- $path := ($m.mountPath | default "") | toString | trim }}
+{{- $type := ($m.type | default "") | toString | trim }}
+{{- if not $name }}
+  {{- fail (printf "%s: every entry requires a name" $ctx) }}
+{{- end }}
+{{- if not (regexMatch "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$" $name) }}
+  {{- fail (printf "%s[%s]: name must be lowercase alphanumeric with dashes (used as a volume name)" $ctx $name) }}
+{{- end }}
+{{- if gt (len $name) 57 }}
+  {{- fail (printf "%s[%s]: name must be at most 57 characters (volume name is extra-<name>)" $ctx $name) }}
+{{- end }}
+{{- if has $name $seenNames }}
+  {{- fail (printf "%s: duplicate name %q" $ctx $name) }}
+{{- end }}
+{{- if not $path }}
+  {{- fail (printf "%s[%s]: mountPath is required" $ctx $name) }}
+{{- end }}
+{{- if not (hasPrefix "/" $path) }}
+  {{- fail (printf "%s[%s]: mountPath %q must be absolute" $ctx $name $path) }}
+{{- end }}
+{{- if has $path $reserved }}
+  {{- fail (printf "%s[%s]: mountPath %q conflicts with a built-in volume mount" $ctx $name $path) }}
+{{- end }}
+{{- if has $path $seenPaths }}
+  {{- fail (printf "%s: duplicate mountPath %q" $ctx $path) }}
+{{- end }}
+{{- if eq $type "nfs" }}
+  {{- if not (($m.nfsPath | default "") | toString | trim) }}
+    {{- fail (printf "%s[%s]: nfsPath is required when type is \"nfs\"" $ctx $name) }}
+  {{- end }}
+  {{- if not (or (($m.nfsServer | default "") | toString | trim) $defaultNfsServer) }}
+    {{- fail (printf "%s[%s]: nfsServer is empty and storages.defaultNfsServer is not set" $ctx $name) }}
+  {{- end }}
+{{- else if eq $type "pvc" }}
+  {{- if not (($m.existingClaim | default "") | toString | trim) }}
+    {{- fail (printf "%s[%s]: existingClaim is required when type is \"pvc\" (extraMounts does not create PVCs)" $ctx $name) }}
+  {{- end }}
+{{- else }}
+  {{- fail (printf "%s[%s]: type must be \"nfs\" or \"pvc\", got %q" $ctx $name $type) }}
+{{- end }}
+{{- $seenNames = append $seenNames $name }}
+{{- $seenPaths = append $seenPaths $path }}
+{{- end }}
+{{- end }}
+
+{{/*
+Extra mount volumeMounts. Indent with nindent 12 under container volumeMounts.
+Usage: include "kramerius.extraMounts.volumeMounts" (dict "mounts" $mounts)
+*/}}
+{{- define "kramerius.extraMounts.volumeMounts" -}}
+{{- range $m := (.mounts | default list) }}
+- mountPath: {{ $m.mountPath }}
+  name: extra-{{ $m.name }}
+  readOnly: {{ $m.readOnly | default false }}
+{{- end }}
+{{- end }}
+
+{{/*
+Extra mount pod volumes. type: nfs emits an inline NFS volume; type: pvc references
+an existing claim. Indent with nindent 8 under pod volumes.
+Usage: include "kramerius.extraMounts.volumes" (dict "root" $ "mounts" $mounts)
+*/}}
+{{- define "kramerius.extraMounts.volumes" -}}
+{{- $root := .root }}
+{{- range $m := (.mounts | default list) }}
+- name: extra-{{ $m.name }}
+{{- if eq $m.type "nfs" }}
+  nfs:
+    server: {{ default (($root.Values.storages | default dict).defaultNfsServer) $m.nfsServer | quote }}
+    path: {{ $m.nfsPath | quote }}
+{{- else }}
+  persistentVolumeClaim:
+    claimName: {{ $m.existingClaim | quote }}
+{{- end }}
 {{- end }}
 {{- end }}
 
