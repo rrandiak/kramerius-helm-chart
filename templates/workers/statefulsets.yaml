@@ -106,7 +106,13 @@ spec:
             {{- end }}
             {{- $otelDefaults := (((($root.Values.observability | default dict).otel | default dict).workersDefault) | default dict) }}
             - name: CATALINA_OPTS
-              value: {{ if ($group.catalinaOptsOverride | default "") | trim }}{{ $group.catalinaOptsOverride | trim | quote }}{{ else }}{{ include "kramerius.mergeCatalinaOpts" (dict "root" $root "memory" ($group.catalinaOptsMemory | default "") "javaagents" $workerJavaagents "extra" ($group.catalinaOptsExtra | default "") "otelComp" (default $otelDefaults ($group.otel | default dict)) "otelServiceName" (printf "worker-%s" $group.name) "globalShadow" ((($root.Values.shadow | default dict).catalinaOpts) | default "")) | quote }}{{ end }}
+              value: {{ if ($group.catalinaOptsOverride | default "") | trim }}{{ $group.catalinaOptsOverride | trim | quote }}{{ else }}{{ include "kramerius.mergeCatalinaOpts" (dict "root" $root "memory" ($group.catalinaOptsMemory | default "") "javaagents" $workerJavaagents "extra" ($group.catalinaOptsExtra | default "") "otelComp" dict "globalShadow" ((($root.Values.shadow | default dict).catalinaOpts) | default "")) | quote }}{{ end }}
+            {{- /* OTel goes to JAVA_TOOL_OPTIONS, not CATALINA_OPTS: plugin jobs run in child JVMs that the worker starts with plain `java`, which ignores CATALINA_OPTS but inherits the environment. */}}
+            {{- $otelOpts := include "kramerius.otelJvmOpts" (dict "root" $root "compOtel" (default $otelDefaults ($group.otel | default dict)) "serviceName" (printf "worker-%s" $group.name)) | trim | replace "\"" "" }}
+            {{- if $otelOpts }}
+            - name: JAVA_TOOL_OPTIONS
+              value: {{ $otelOpts | quote }}
+            {{- end }}
           volumeMounts:
 {{- include "kramerius.perAppJavaagentVolumeMounts" (dict "root" $root "javaagents" $workerJavaagents "otelComp" (default $otelDefaults ($group.otel | default dict))) | nindent 12 }}
             - mountPath: /root/.kramerius4
