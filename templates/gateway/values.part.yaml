@@ -24,6 +24,7 @@ gateway:
 
   # CIDRs of trusted reverse proxies (Ingress controllers, load balancers).
   # Client IP is resolved from X-Forwarded-For by skipping these.
+  # Also the sources whose CDK-TOKEN-PARAMETERS reader IP is trusted for rate limiting.
   trustedProxyCidrs:
     - 10.0.0.0/8
     - 172.16.0.0/12

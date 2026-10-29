@@ -83,6 +83,7 @@ transforms:
       .http_referer = string(parsed.http_referer) ?? ""
       .http_user_agent = string(parsed.http_user_agent) ?? ""
       .actor = string(parsed.actor) ?? ""
+      .rl_client = string(parsed.rl_client) ?? ""
       .endpoint = "unknown"
       _path = .path
 {{- range $ep := $endpoints }}

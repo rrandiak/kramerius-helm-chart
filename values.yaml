@@ -69,6 +69,7 @@ gateway:
   # CIDRs of trusted upstream proxies (nginx-ingress pod/node CIDR). Only these IPs are trusted
   # to set X-Forwarded-For. $remote_addr is used for rate limiting — not raw XFF — so this must
   # be set correctly to prevent clients spoofing their IP to bypass rate limits.
+  # Also the sources whose CDK-TOKEN-PARAMETERS reader IP is trusted for rate limiting.
   trustedProxyCidrs:
     - 10.0.0.0/8
     - 172.16.0.0/12

@@ -30,11 +30,14 @@ data:
         country_code    LowCardinality(String) DEFAULT '',
         city_name       String                 DEFAULT '',
         organization    String                 DEFAULT '',
-        actor           LowCardinality(String) DEFAULT ''
+        actor           LowCardinality(String) DEFAULT '',
+        rl_client       String                 DEFAULT ''
     )
     ENGINE = MergeTree()
     PARTITION BY toDate(timestamp)
     ORDER BY (timestamp, status)
     TTL toDateTime(timestamp) + INTERVAL {{ $c.retentionDays | default 90 }} DAY
     SETTINGS index_granularity = 8192;
+
+    ALTER TABLE default.nginx_access_logs ADD COLUMN IF NOT EXISTS rl_client String DEFAULT '';
 {{- end }}

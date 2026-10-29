@@ -122,6 +122,36 @@ function _M.ip_in_cidrs(ip, cidrs)
   return false
 end
 
+-- ── CDK reader IP ────────────────────────────────────────────────────────────
+-- Kramerius CDK forwards each reader's address in CDK-TOKEN-PARAMETERS as …|header_ip_address=<ip>|….
+-- Only a connection from trustedProxyCidrs may speak for another address; from anywhere else the
+-- header is ignored, or any client could claim a fresh rate-limit identity on every request.
+-- The underscore spelling of the header is never seen: nginx drops it (underscores_in_headers off).
+
+local function is_ip_literal(s)
+  local o1, o2, o3, o4 = s:match("^(%d+)%.(%d+)%.(%d+)%.(%d+)$")
+  if o1 then
+    return tonumber(o1) <= 255 and tonumber(o2) <= 255
+       and tonumber(o3) <= 255 and tonumber(o4) <= 255
+  end
+  return #s <= 45 and s:find(":", 1, true) ~= nil and s:match("^[%x:]+$") ~= nil
+end
+
+-- Returns the reader IP from the CDK header, or nil when the source is untrusted or the value
+-- is missing or not a literal address.
+function _M.cdk_reader_ip(req_ip, trusted_cidrs)
+  if not _M.ip_in_cidrs(req_ip, trusted_cidrs) then return nil end
+  local value = ngx.req.get_headers()["cdk-token-parameters"]
+  if type(value) == "table" then value = value[1] end
+  if type(value) ~= "string" then return nil end
+  local ip = value:match("header_ip_address=([^|]*)")
+  if not ip then return nil end
+  ip = ip:match("^%s*([^,]*)")
+  ip = ip and ip:match("^(.-)%s*$")
+  if not ip or not is_ip_literal(ip) then return nil end
+  return ip
+end
+
 -- ── profile matching ─────────────────────────────────────────────────────────
 
 local function profile_matches(p, req_ip, req_username)

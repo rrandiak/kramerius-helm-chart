@@ -324,6 +324,22 @@ gateway:
     - 192.168.0.0/16
 ```
 
+### CDK reader IPs
+
+Readers who come through Kramerius CDK all connect from the CDK server, so without help they share one rate-limit identity (usually a profile such as "Internal Network"). CDK forwards each reader's address in the `CDK-TOKEN-PARAMETERS` header as `…|header_ip_address=<ip>|…`; the gateway uses that address for rate limiting instead.
+
+- **Trust rule.** The header is read only when the connecting address (`$remote_addr` after `real_ip`) is inside `trustedProxyCidrs`. From any other address it is ignored, so a client cannot pick a fresh identity per request. The value must be a literal IPv4 or IPv6 address; if it lists several, the first is used. Anything else falls back to the connecting address.
+- **What uses it.** Ban check, profile matching, the rate key and the download key. Backend pinning (session affinity) still uses the connecting address.
+- **CDK's own traffic.** Harvest and indexing requests carry no reader IP and keep the CDK server's identity, normally the internal profile.
+- **IPv6 readers** are counted per address, but CIDR matching in bans and profile IPs (`ip_in_cidrs`) covers IPv4 only, so an IPv6 reader matches no CIDR ban or IP profile.
+- **Logs.** Every access-log row has `rl_client`: the address used for rate limiting. It is empty for rows that skip rate limiting (internal sub-requests, config not loaded yet). In ClickHouse, CDK readers are rows where `rl_client != remote_addr`.
+
+Upgrading an existing installation: the `clickhouse-init` Job does not run again on `helm upgrade`, so add the column by hand **before** rolling out the new gateway config:
+
+```sql
+ALTER TABLE default.nginx_access_logs ADD COLUMN IF NOT EXISTS rl_client String DEFAULT '';
+```
+
 ## Resource Requests / Limits
 
 ### OpenResty

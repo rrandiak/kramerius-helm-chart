@@ -142,7 +142,10 @@ function _M.on_access()
   local cfg = gw_config.get()
   if not cfg then return end  -- config not yet loaded, fail open
 
-  local req_ip = ngx.ctx.sticky_client_ip
+  -- CDK readers are limited by their own IP; backend pinning stays on the connecting address.
+  local req_ip = common.cdk_reader_ip(ngx.ctx.sticky_client_ip, RC.trusted_proxy_cidrs)
+                 or ngx.ctx.sticky_client_ip
+  ngx.var.rl_client = req_ip
 
   -- 1. ban check
   if common.ip_in_cidrs(req_ip, cfg.bans) then

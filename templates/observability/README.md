@@ -114,12 +114,24 @@ CREATE TABLE default.nginx_access_logs
     continent_code   LowCardinality(String) DEFAULT '',
     country_code     LowCardinality(String) DEFAULT '',
     city_name        String                 DEFAULT '',
-    organization     String                 DEFAULT ''
+    organization     String                 DEFAULT '',
+
+    actor            LowCardinality(String) DEFAULT '',  -- matched gateway profile, '' if none
+    rl_client        String                 DEFAULT ''   -- address used for rate limiting
 )
 ENGINE = MergeTree()
 PARTITION BY toDate(timestamp)
 ORDER BY (timestamp, status)
 TTL toDateTime(timestamp) + INTERVAL <retentionDays> DAY;
+```
+
+`rl_client` is the address used for rate limiting: the reader IP from `CDK-TOKEN-PARAMETERS` when the
+request came from a trusted proxy, otherwise `remote_addr` (empty for rows that skip rate limiting).
+It was added in 1.3.3. The `clickhouse-init` Job is not a Helm hook and does not run again on
+upgrade, so on an existing installation run this before rolling out the new gateway config:
+
+```sql
+ALTER TABLE default.nginx_access_logs ADD COLUMN IF NOT EXISTS rl_client String DEFAULT '';
 ```
 
 Dashboards in HyperDX are greenfield for this migration.

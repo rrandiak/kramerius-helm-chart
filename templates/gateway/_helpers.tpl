@@ -71,6 +71,12 @@ return {
       socket_timeout_ms = {{ $ur.socketTimeoutMs | default 3000 }},
     },
   },
+  -- Sources whose CDK-TOKEN-PARAMETERS reader IP is used for rate limiting.
+  trusted_proxy_cidrs = {
+    {{- range .Values.gateway.trustedProxyCidrs | default list }}
+    {{ . | quote }},
+    {{- end }}
+  },
   session_affinity = {
     {{- $sa := .Values.gateway.sessionAffinity | default dict }}
     enabled          = {{ $sa.enabled | default true }},
