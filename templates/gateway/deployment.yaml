@@ -10,6 +10,13 @@ metadata:
     {{- include "kramerius.gateway.matchLabels" . | nindent 4 }}
 spec:
   replicas: {{ .Values.gateway.replicas | default 1 }}
+  # The new pod must be ready before the old one stops. This is safe with the Vector sidecar
+  # because each pod keeps its Vector state in its own emptyDir.
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
   selector:
     matchLabels:
       {{- include "kramerius.gateway.matchLabels" . | nindent 6 }}
@@ -35,12 +42,20 @@ spec:
             - |
               /usr/local/openresty/bin/openresty -g 'daemon off;' &
               NGINX_PID=$!
+              # The shell is PID 1 and ignores signals it does not trap. Pass the stop signal
+              # (QUIT from the image, or TERM) on to nginx as QUIT, its graceful shutdown.
+              trap 'kill -QUIT $NGINX_PID 2>/dev/null' TERM QUIT INT
               (while true; do
                 sleep 3600
                 mv /var/log/nginx/access.log /var/log/nginx/access.log.1
                 kill -USR1 $NGINX_PID
               done) &
-              wait $NGINX_PID
+              ROTATE_PID=$!
+              wait $NGINX_PID; RC=$?
+              # A trapped signal interrupts wait; keep waiting while nginx finishes its requests.
+              while kill -0 $NGINX_PID 2>/dev/null; do wait $NGINX_PID; RC=$?; done
+              kill $ROTATE_PID 2>/dev/null
+              exit $RC
           {{- end }}
           env:
             - name: TZ
@@ -48,6 +63,15 @@ spec:
           ports:
             - name: http
               containerPort: 80
+          readinessProbe:
+            tcpSocket:
+              port: http
+            periodSeconds: 2
+          lifecycle:
+            preStop:
+              # Let the Service drop this pod before nginx stops accepting connections.
+              exec:
+                command: ["sleep", "5"]
           volumeMounts:
             - name: nginx-conf
               mountPath: /usr/local/openresty/nginx/conf/nginx.conf
@@ -74,8 +98,19 @@ spec:
             - /bin/sh
             - -c
             - |
-              find /var/lib/vector -name '*.lock' -delete 2>/dev/null || true
-              exec vector --config /etc/vector/vector.yaml
+              # Restart Vector in place instead of letting the container fail: a crash-looping
+              # container makes the pod NotReady, and logging must not take the gateway down.
+              STOP=0
+              trap 'STOP=1; kill -TERM $VECTOR_PID 2>/dev/null' TERM INT QUIT
+              while [ "$STOP" = 0 ]; do
+                vector --config /etc/vector/vector.yaml --graceful-shutdown-limit-secs 20 &
+                VECTOR_PID=$!
+                wait $VECTOR_PID; RC=$?
+                [ "$STOP" = 1 ] && break
+                echo "vector exited with code $RC, restarting in 5s" >&2
+                sleep 5
+              done
+              while kill -0 $VECTOR_PID 2>/dev/null; do wait $VECTOR_PID; done
           volumeMounts:
             - name: vector-config
               mountPath: /etc/vector
@@ -83,8 +118,13 @@ spec:
             - name: nginx-logs
               mountPath: /var/log/nginx
               readOnly: true
-            - name: vector-data
+            # Vector's data_dir (file checkpoints), private to this pod.
+            - name: vector-state
               mountPath: /var/lib/vector
+            # GeoIP databases, written by the geoip-init Job and geoip-updater CronJob.
+            - name: vector-data
+              mountPath: /var/lib/vector-geoip
+              readOnly: true
           resources:
             {{- toYaml ($v.resources | default dict) | nindent 12 }}
         {{- end }}
@@ -111,8 +151,12 @@ spec:
         - name: vector-config
           configMap:
             name: {{ include "kramerius.observability.vectorName" . }}-config
+        - name: vector-state
+          emptyDir:
+            sizeLimit: 16Mi
         - name: vector-data
           persistentVolumeClaim:
             claimName: vector-data
+            readOnly: true
         {{- end }}
 

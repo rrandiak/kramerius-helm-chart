@@ -42,10 +42,10 @@ observability helpers — shared names, labels, and optional resources.
 enrichment_tables:
   geoip_db:
     type: mmdb
-    path: /var/lib/vector/geoip.mmdb
+    path: /var/lib/vector-geoip/geoip.mmdb
   asn_db:
     type: mmdb
-    path: /var/lib/vector/asn.mmdb
+    path: /var/lib/vector-geoip/asn.mmdb
 
 sources:
   nginx_access:
@@ -123,9 +123,14 @@ sinks:
       strategy: basic
       user: {{ ((.Values.observability | default dict).clickhouse | default dict).user | default "" | quote }}
       password: {{ ((.Values.observability | default dict).clickhouse | default dict).password | default "" | quote }}
+    # The file source checkpoints only what ClickHouse acknowledged, so a Vector restart re-reads
+    # the rest of access.log. While ClickHouse is slow, the memory buffer fills and Vector stops
+    # reading; the in-memory access.log holds the backlog until rotation drops access.log.1.
+    acknowledgements:
+      enabled: true
     buffer:
-      type: disk
-      max_size: 536870912
+      type: memory
+      max_events: 10000
       when_full: block
 {{- end -}}
 {{- end }}

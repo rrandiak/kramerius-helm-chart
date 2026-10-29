@@ -22,8 +22,8 @@ observability:
     pipeline: ""
     # GeoIP enrichment — always enabled when observability is on.
     # Two DB-IP free databases are used:
-    #   - dbip-city-lite  → continent, country, city             (stored at /var/lib/vector/geoip.mmdb)
-    #   - dbip-asn-lite   → organization                         (stored at /var/lib/vector/asn.mmdb)
+    #   - dbip-city-lite  → continent, country, city             (PVC vector-data, /var/lib/vector-geoip/geoip.mmdb in Vector)
+    #   - dbip-asn-lite   → organization                         (PVC vector-data, /var/lib/vector-geoip/asn.mmdb in Vector)
     # An init container downloads both on first run; a CronJob refreshes them monthly.
     geoip:
       # Image for the init container and CronJob download step.
@@ -47,8 +47,8 @@ observability:
         cpu: "500m"
         memory: "512Mi"
     buffer:
-      # PVC for Vector's data directory — holds file checkpoints and disk buffer.
-      # Always provisioned; defaults to 1Gi. Increase if using Vector's disk buffer sink.
+      # PVC vector-data: holds the GeoIP databases, mounted read-only in the gateway pod.
+      # Vector's buffer is in memory and its checkpoints are on a per-pod emptyDir.
       storage:
         storageClass: ""
         size: "1Gi"

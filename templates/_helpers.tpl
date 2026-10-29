@@ -284,7 +284,15 @@ Replicas are omitted so scaling does not force a rolling restart.
 {{- end }}
 
 {{- define "kramerius.checksum.gatewayOpenrestyPod" -}}
-{{- mustToJson (dict "gateway" .Values.gateway "namespace" .Values.namespace) | sha256sum -}}
+{{- $files := dict -}}
+{{- range $path, $_ := .Files.Glob "files/gateway/{nginx.conf,*.lua,429.body,429.titles,endpoints.txt}" -}}
+{{- $_ := set $files $path ($.Files.Get $path) -}}
+{{- end -}}
+{{- $vector := "" -}}
+{{- if eq (include "kramerius.observability.enabled" .) "true" -}}
+{{- $vector = include "kramerius.observability.vectorPipeline" . -}}
+{{- end -}}
+{{- mustToJson (dict "gateway" .Values.gateway "namespace" .Values.namespace "files" $files "vector" $vector) | sha256sum -}}
 {{- end }}
 
 {{- define "kramerius.checksum.gatewayManagementPod" -}}

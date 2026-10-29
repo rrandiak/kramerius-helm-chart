@@ -53,7 +53,8 @@ optional, tail sampling]
 | Mount path in pod | Volume source | Access mode | Purpose |
 |---|---|---|---|
 | `/var/lib/clickhouse` | PVC `clickhouse-data` | ReadWriteOnce | ClickHouse table data and WAL |
-| `/var/lib/vector` | PVC `vector-data` | ReadWriteOnce | Vector disk buffer + GeoIP MMDB files (`geoip.mmdb`, `asn.mmdb`) |
+| `/var/lib/vector-geoip` (read-only, gateway pod) | PVC `vector-data` | ReadWriteOnce | GeoIP MMDB files (`geoip.mmdb`, `asn.mmdb`), written by the GeoIP Job and CronJob |
+| `/var/lib/vector` (gateway pod) | `emptyDir` | — | Vector file checkpoints, private to each pod; the sink buffer is in memory |
 
 These workloads are now templated behind `observability.enabled`. For production,
 you can still choose operator-managed components, but this chart provides an
@@ -86,8 +87,8 @@ automatically at deploy time and refreshed on the 5th of every month:
 
 | File | Source database | Fields populated |
 |---|---|---|
-| `/var/lib/vector/geoip.mmdb` | DB-IP City Lite | `continent_code`, `country_code`, `city_name` |
-| `/var/lib/vector/asn.mmdb` | DB-IP ASN Lite | `organization` |
+| `/var/lib/vector-geoip/geoip.mmdb` | DB-IP City Lite | `continent_code`, `country_code`, `city_name` |
+| `/var/lib/vector-geoip/asn.mmdb` | DB-IP ASN Lite | `organization` |
 
 The `geoip-init` hook Job downloads both files on first install. The `geoip-updater` CronJob overwrites
 them monthly. Private IPs skip the lookup entirely.

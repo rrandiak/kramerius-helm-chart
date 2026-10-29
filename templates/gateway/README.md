@@ -375,6 +375,10 @@ Memory is dominated by Lua shared dict allocations (`rateLimit` 32 MB + `downloa
 ## Notes
 
 - The gateway does **not** perform TLS — TLS is terminated at the Ingress or Gateway API controller.
+- The pod restarts on `helm upgrade` when gateway values, the files under `files/gateway/` it mounts (`nginx.conf`, Lua, error pages, `endpoints.txt`) or the Vector pipeline change.
+- Rollouts are zero-downtime: RollingUpdate with `maxSurge: 1, maxUnavailable: 0`, a TCP readiness probe, a 5 s `preStop` delay, and graceful nginx shutdown (`QUIT`), so in-flight requests finish. Vector keeps no shared state: its checkpoints are on a per-pod `emptyDir`, its sink buffer is in memory, and the `vector-data` PVC (GeoIP files only) is mounted read-only. Old and new pods can therefore overlap safely.
+- Vector is restarted inside its container when it exits, so a Vector failure never makes the gateway pod NotReady. Look for `vector exited with code` in the `vector` container log; the container restart count stays 0.
+- Charts up to 1.3.3 kept a disk buffer on the shared PVC; two overlapping pods corrupted it (Vector panics with `skipping more than 2^64 events`). On those versions restart the gateway by scaling to 0 and back to 1, never with `kubectl rollout restart`. Recovery: scale to 0, delete `buffer/` on the PVC, scale to 1. After upgrading to 1.3.4 the leftover `buffer/` and `nginx_access/` directories on the PVC are unused and can be deleted.
 - Rate and download counters reset on pod restart (in-memory Lua shared dicts). Limit configurations and bans survive restarts via Redis RDB snapshots.
 - All access control rules are managed via the management client and API — never through `helm upgrade`. Adding, changing, or removing a rule does not require a redeployment.
 - The `curatorPathPrefix` must match the path prefix known to the Kramerius Curator application. Changing it requires redeployment of both gateway and curator.
