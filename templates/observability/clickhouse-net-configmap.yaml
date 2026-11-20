@@ -14,10 +14,18 @@ data:
       <listen_host>0.0.0.0</listen_host>
       <listen_host>::</listen_host>
     </clickhouse>
+{{- /*
+  Server log goes to stdout only. The image default also writes rotating files
+  (1000M x 10) under /var/log/clickhouse-server, which is not on the PVC and
+  counts against the container's ephemeral-storage limit; at trace level that
+  fills 1Gi in hours and gets the pod evicted. kubelet rotates stdout.
+*/}}
   logger.xml: |
     <clickhouse>
       <logger>
-        <console>{{ .Values.observability.clickhouse.debug | default false }}</console>
+        <console>true</console>
+        <log remove="1"/>
+        <errorlog remove="1"/>
       </logger>
     </clickhouse>
 {{- end }}
